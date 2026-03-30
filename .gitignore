@@ -2,7 +2,7 @@
 venv/
 __pycache__/
 *.pyc
-*.pkl
+# *.pkl  ← modelos HMM incluidos en el repo (no contienen secrets)
 backtest/data/
 trades.db
 agent.log
