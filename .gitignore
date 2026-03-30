@@ -1,0 +1,12 @@
+.env
+venv/
+__pycache__/
+*.pyc
+*.pkl
+backtest/data/
+trades.db
+agent.log
+dashboard_state.json
+backtest/backtest_results.csv
+backtest/optimizer_results.csv
+backtest/regime_comparison.csv

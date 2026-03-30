@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \":*)",
+      "Bash(python -m pip freeze)",
+      "Bash(pip install:*)",
+      "Bash(\"C:\\\\Users\\\\D01596\\\\source\\\\repos\\\\Crypto\\\\requirements.txt\":*)",
+      "Bash(echo \"anthropic==0.86.0:*)",
+      "Bash(\"C:\\\\Users\\\\D01596\\\\source\\\\repos\\\\Crypto\\\\Procfile\")",
+      "Bash(echo \".env:*)",
+      "Bash(\"C:\\\\Users\\\\D01596\\\\source\\\\repos\\\\Crypto\\\\.gitignore\")"
+    ]
+  }
+}
