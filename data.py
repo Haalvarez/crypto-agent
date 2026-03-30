@@ -77,6 +77,11 @@ def _calc_rsi(closes: pd.Series, period: int = 14) -> float:
     return float(rsi.iloc[-1])
 
 
+def get_prices_and_indicators_for(symbols: list[str]) -> dict:
+    """Igual que get_prices_and_indicators pero solo para los símbolos indicados."""
+    return get_prices_and_indicators(symbols)
+
+
 def format_market_context(market_data: dict, fng: dict) -> str:
     lines = [
         f"=== CONTEXTO DE MERCADO — {datetime.now().strftime('%Y-%m-%d %H:%M')} ===",

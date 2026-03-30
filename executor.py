@@ -90,6 +90,75 @@ def count_open_trades() -> int:
     return count
 
 
+def has_open_position(symbol: str) -> bool:
+    """Retorna True si el par ya tiene una posición abierta."""
+    conn  = sqlite3.connect('trades.db')
+    count = conn.execute(
+        "SELECT COUNT(*) FROM trades WHERE status='OPEN' AND symbol=?", (symbol,)
+    ).fetchone()[0]
+    conn.close()
+    return count > 0
+
+
+def get_open_position(symbol: str) -> dict | None:
+    """Retorna la posición abierta de un par, o None si no hay."""
+    conn  = sqlite3.connect('trades.db')
+    row   = conn.execute(
+        """SELECT id, symbol, direction, entry_price, stop_loss, take_profit,
+                  quantity, opened_at
+           FROM trades WHERE status='OPEN' AND symbol=? LIMIT 1""",
+        (symbol,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "id": row[0], "symbol": row[1], "direction": row[2],
+        "entry_price": row[3], "stop_loss": row[4], "take_profit": row[5],
+        "quantity": row[6], "opened_at": row[7],
+    }
+
+
+def market_close_trade(trade: dict, current_price: float, reason: str) -> dict:
+    """
+    Cierra un trade al precio de mercado (no espera stop/target).
+    Usado para salidas por cambio de régimen u otras condiciones externas.
+    """
+    try:
+        exchange = get_exchange()
+        exchange.load_markets()
+        quantity = exchange.amount_to_precision(trade["symbol"], trade["quantity"])
+        # Para cerrar un LONG vendemos, para cerrar un SHORT compramos
+        side  = 'sell' if trade["direction"] == 'LONG' else 'buy'
+        order = exchange.create_order(
+            symbol=trade["symbol"], type='market', side=side, amount=float(quantity)
+        )
+        exit_price = float(order.get('average') or order.get('price') or current_price)
+    except Exception as e:
+        print(f"  [executor] ERROR cerrando mercado {trade['symbol']}: {e}")
+        exit_price = current_price  # fallback: registrar al precio actual
+
+    if trade["direction"] == 'LONG':
+        pnl = (exit_price - trade["entry_price"]) * trade["quantity"]
+    else:
+        pnl = (trade["entry_price"] - exit_price) * trade["quantity"]
+
+    result = 'WIN' if pnl >= 0 else 'LOSS'
+    close_trade(trade["id"], exit_price, result)
+
+    print(f"  [executor] Trade #{trade['id']} cerrado por {reason} | {result} | PnL ${pnl:.2f}")
+    return {
+        "trade_id":    trade["id"],
+        "symbol":      trade["symbol"],
+        "direction":   trade["direction"],
+        "result":      result,
+        "entry_price": trade["entry_price"],
+        "exit_price":  exit_price,
+        "pnl_usd":     round(pnl, 4),
+        "reason":      reason,
+    }
+
+
 # ── Parsing de precios desde señal ───────────────────────────
 
 def parse_price(value: str) -> float:
@@ -113,10 +182,9 @@ def execute_signal(signal: dict, market_data: dict) -> dict | None:
     symbol    = signal['symbol']
     direction = signal['direction']
 
-    # Verificar límite de posiciones abiertas
-    open_count = count_open_trades()
-    if open_count >= MAX_OPEN_POSITIONS:
-        print(f"  [executor] Límite de {MAX_OPEN_POSITIONS} posiciones abiertas — saltando {symbol}")
+    # Verificar que no haya posición abierta en este par específico
+    if has_open_position(symbol):
+        print(f"  [executor] Ya hay posición abierta en {symbol} — saltando")
         return None
 
     # Precio actual

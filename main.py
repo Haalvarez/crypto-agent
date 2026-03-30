@@ -51,6 +51,42 @@ def reset_daily_state_if_needed():
         state["last_reset_date"] = today
 
 
+def _check_regime_exits(regimes: dict, mkt: dict) -> list[dict]:
+    """
+    Cierra posiciones al mercado si el régimen cambió a uno incompatible con la dirección.
+
+    Lógica:
+      - LONG abierto + régimen ahora es BEAR_TREND → salir (la tesis alcista ya no aplica)
+      - SHORT abierto + régimen ahora es BULL_TREND → salir
+      - Otros cambios de régimen: no forzar salida (SIDEWAYS/REVERSAL son ambiguos)
+    """
+    closed = []
+    for sym in config.SYMBOLS:
+        trade = exc.get_open_position(sym)
+        if not trade:
+            continue
+
+        regime_info = regimes.get(sym, {})
+        if not regime_info.get("available"):
+            continue
+
+        regime    = regime_info.get("regime")
+        price     = mkt.get(sym, {}).get("price", 0)
+        direction = trade["direction"]
+
+        should_exit = (
+            (direction == "LONG"  and regime == "BEAR_TREND") or
+            (direction == "SHORT" and regime == "BULL_TREND")
+        )
+
+        if should_exit:
+            log.info(f"  [regime exit] {sym}: {direction} cerrado — régimen cambió a {regime}")
+            ct = exc.market_close_trade(trade, price, f"cambio de régimen a {regime}")
+            closed.append(ct)
+
+    return closed
+
+
 def _log_regimes(regimes: dict) -> None:
     for sym, info in regimes.items():
         if info.get("available"):
@@ -207,18 +243,49 @@ def run_cycle():
         regimes        = {}
         regime_context = ""
 
-    # 4. Análisis Claude
+    # 4. Salida por cambio de régimen (sin Claude)
     try:
-        result  = brain.analyze(context_text, regime_context)
-        signals = result["signals"]
-        tokens  = result["input_tokens"] + result["output_tokens"]
-        log.info(f"Claude OK — {len(signals)} señales — {tokens} tokens")
+        regime_closed = _check_regime_exits(regimes, mkt)
+        for ct in regime_closed:
+            tg.send_trade_closed(ct)
+            closed_trades.append(ct)
+            if ct["result"] == "LOSS":
+                state["daily_loss_usd"] += abs(ct["pnl_usd"])
+                if state["daily_loss_usd"] >= config.MAX_DAILY_LOSS_USD:
+                    state["halted"] = True
+                    tg.send_daily_limit_hit(state["daily_loss_usd"])
     except Exception as e:
-        log.error(f"Error brain: {e}")
-        tg.send_error("análisis Claude", str(e))
-        return
+        log.error(f"Error regime exits: {e}")
 
-    # 5. Ejecutar señales accionables
+    # 5. Análisis Claude — solo para pares SIN posición abierta
+    free_symbols   = [s for s in config.SYMBOLS if not exc.has_open_position(s)]
+    blocked_symbols = [s for s in config.SYMBOLS if exc.has_open_position(s)]
+
+    if blocked_symbols:
+        log.info(f"  Pares con posición abierta (skip Claude): {', '.join(blocked_symbols)}")
+
+    signals = []
+    tokens  = 0
+
+    if free_symbols and not state["halted"]:
+        try:
+            free_mkt     = {s: mkt[s] for s in free_symbols if s in mkt}
+            free_context = market_data_module.format_market_context(free_mkt, fng)
+            free_regime  = regime_module.format_regime_context(
+                {s: regimes[s] for s in free_symbols if s in regimes}
+            )
+            result  = brain.analyze(free_context, free_regime)
+            signals = result["signals"]
+            tokens  = result["input_tokens"] + result["output_tokens"]
+            log.info(f"Claude OK — {len(signals)} señales — {tokens} tokens ({len(free_symbols)} pares)")
+        except Exception as e:
+            log.error(f"Error brain: {e}")
+            tg.send_error("análisis Claude", str(e))
+            return
+    elif not free_symbols:
+        log.info("Todos los pares tienen posición abierta — skip Claude este ciclo")
+
+    # 6. Ejecutar señales accionables
     for signal in signals:
         if signal.get("actionable") and not state["halted"]:
             log.info(f"Ejecutando: {signal['symbol']} {signal['direction']}")
