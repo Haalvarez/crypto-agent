@@ -31,13 +31,24 @@ state = {
     "daily_loss_usd":  0.0,
     "halted":          False,
     "cycles_run":      0,
+    "analysis_cycles": 0,
     "last_reset_date": datetime.now().date(),
+    # Cuándo fue el último análisis Claude por par
+    "last_analysis":   {},   # {symbol: datetime}
     # Contadores por par — persisten mientras el proceso corre
     "pair_stats":      {sym: {"queries": 0, "actionable": 0, "discarded": 0, "last_signal": None,
                               "last_conviction": 0, "last_regime": None, "last_price": 0,
                               "last_rsi": 0, "last_trend": None}
                         for sym in config.SYMBOLS},
 }
+
+
+def needs_analysis(symbol: str) -> bool:
+    """True si pasaron ANALYSIS_INTERVAL_MINUTES desde el último análisis Claude de este par."""
+    last = state["last_analysis"].get(symbol)
+    if last is None:
+        return True
+    return (datetime.now() - last).total_seconds() >= config.ANALYSIS_INTERVAL_MINUTES * 60
 
 
 # ── Helpers ───────────────────────────────────────────────────
@@ -170,7 +181,8 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
     payload = {
         "last_update":      datetime.now().isoformat(),
         "cycle":            state["cycles_run"],
-        "interval_minutes": config.INTERVAL_MINUTES,
+        "monitor_interval_minutes":  config.MONITOR_INTERVAL_MINUTES,
+        "analysis_interval_minutes": config.ANALYSIS_INTERVAL_MINUTES,
         "halted":           state["halted"],
         "fear_greed":       fng,
         "balance_usdt":     balance,
@@ -257,33 +269,47 @@ def run_cycle():
     except Exception as e:
         log.error(f"Error regime exits: {e}")
 
-    # 5. Análisis Claude — solo para pares SIN posición abierta
-    free_symbols   = [s for s in config.SYMBOLS if not exc.has_open_position(s)]
+    # 5. Análisis Claude — solo pares SIN posición abierta Y con análisis vencido (>4h)
+    free_symbols    = [s for s in config.SYMBOLS if not exc.has_open_position(s)]
     blocked_symbols = [s for s in config.SYMBOLS if exc.has_open_position(s)]
+    due_symbols     = [s for s in free_symbols if needs_analysis(s)]
 
     if blocked_symbols:
-        log.info(f"  Pares con posición abierta (skip Claude): {', '.join(blocked_symbols)}")
+        log.info(f"  Skip Claude (posición abierta): {', '.join(blocked_symbols)}")
+    not_due = [s for s in free_symbols if s not in due_symbols]
+    if not_due:
+        mins_each = {s: int((datetime.now() - state["last_analysis"][s]).total_seconds() / 60)
+                     for s in not_due}
+        log.info(f"  Skip Claude (análisis reciente): " +
+                 ", ".join(f"{s} ({config.ANALYSIS_INTERVAL_MINUTES - m}min restantes)"
+                           for s, m in mins_each.items()))
 
     signals = []
     tokens  = 0
 
-    if free_symbols and not state["halted"]:
+    if due_symbols and not state["halted"]:
         try:
-            free_mkt     = {s: mkt[s] for s in free_symbols if s in mkt}
-            free_context = market_data_module.format_market_context(free_mkt, fng)
-            free_regime  = regime_module.format_regime_context(
-                {s: regimes[s] for s in free_symbols if s in regimes}
+            due_mkt     = {s: mkt[s] for s in due_symbols if s in mkt}
+            due_context = market_data_module.format_market_context(due_mkt, fng)
+            due_regime  = regime_module.format_regime_context(
+                {s: regimes[s] for s in due_symbols if s in regimes}
             )
-            result  = brain.analyze(free_context, free_regime)
+            result  = brain.analyze(due_context, due_regime)
             signals = result["signals"]
             tokens  = result["input_tokens"] + result["output_tokens"]
-            log.info(f"Claude OK — {len(signals)} señales — {tokens} tokens ({len(free_symbols)} pares)")
+            log.info(f"Claude OK — {len(signals)} señales — {tokens} tokens ({len(due_symbols)} pares)")
+            # Registrar timestamp de análisis para cada par consultado
+            for s in due_symbols:
+                state["last_analysis"][s] = datetime.now()
+            state["analysis_cycles"] += 1
         except Exception as e:
             log.error(f"Error brain: {e}")
             tg.send_error("análisis Claude", str(e))
             return
     elif not free_symbols:
         log.info("Todos los pares tienen posición abierta — skip Claude este ciclo")
+    elif not due_symbols:
+        log.info("Sin pares vencidos para análisis — ciclo de monitoreo")
 
     # 6. Ejecutar señales accionables
     for signal in signals:
@@ -308,8 +334,8 @@ def run_cycle():
     balance = exc.get_balance_usdt()
     write_dashboard_state(mkt, fng, regimes, signals, balance)
 
-    # 8. Resumen Telegram silencioso solo cada 3 ciclos (o si hay algo que reportar)
-    if cycle_num % 3 == 0 or closed_trades:
+    # 8. Resumen Telegram cada 3 ciclos de análisis (≈12h) o si hubo cierres
+    if state["analysis_cycles"] % 3 == 0 and signals or closed_trades:
         tg.send_cycle_summary(signals, fng, tokens, balance, regimes)
 
     state["cycles_run"] += 1
@@ -337,8 +363,8 @@ def main():
             log.error(f"Error loop: {e}")
             tg.send_error("loop principal", str(e))
 
-        log.info(f"Próximo ciclo en {config.INTERVAL_MINUTES} min...")
-        time.sleep(config.INTERVAL_MINUTES * 60)
+        log.info(f"Próximo ciclo en {config.MONITOR_INTERVAL_MINUTES} min...")
+        time.sleep(config.MONITOR_INTERVAL_MINUTES * 60)
 
 
 if __name__ == "__main__":

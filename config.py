@@ -25,7 +25,7 @@ GITHUB_GIST_TOKEN = os.getenv("GITHUB_GIST_TOKEN", "")
 GITHUB_GIST_ID    = os.getenv("GITHUB_GIST_ID", "")
 
 # --- Pares que el agente monitorea ---
-SYMBOLS = ["ETH/USDT", "SOL/USDT", "BTC/USDT"]
+SYMBOLS = ["ETH/USDT", "SOL/USDT", "BTC/USDT", "XRP/USDT"]
 
 # --- Reglas de riesgo (hardcoded, el agente no las puede cambiar) ---
 MAX_TRADE_USD         = 10     # máximo por operación en USD
@@ -34,6 +34,6 @@ MAX_DAILY_LOSS_USD    = 15     # pérdida diaria máxima antes de detenerse
 MAX_OPEN_POSITIONS    = 2      # máximo de posiciones abiertas simultáneas
 MIN_SIGNAL_CONVICTION = 7      # convicción mínima para ejecutar
 
-# --- Intervalo de análisis ---
-INTERVAL_MINUTES = int(os.getenv("INTERVAL_MINUTES", "15"))
-# TEST=15, producción=240
+# --- Intervalos ---
+MONITOR_INTERVAL_MINUTES  = int(os.getenv("MONITOR_INTERVAL_MINUTES",  "15"))   # SL/TP check
+ANALYSIS_INTERVAL_MINUTES = int(os.getenv("ANALYSIS_INTERVAL_MINUTES", "240"))  # régimen + Claude
