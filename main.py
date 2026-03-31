@@ -236,6 +236,8 @@ def run_cycle():
         closed_trades = exc.check_open_positions(mkt)
         for ct in closed_trades:
             tg.send_trade_closed(ct)
+            # Trade cerrado → resetear last_analysis para que el par se analice en el próximo ciclo
+            state["last_analysis"].pop(ct["symbol"], None)
             if ct["result"] == "LOSS":
                 state["daily_loss_usd"] += abs(ct["pnl_usd"])
                 if state["daily_loss_usd"] >= config.MAX_DAILY_LOSS_USD:
@@ -260,6 +262,7 @@ def run_cycle():
         regime_closed = _check_regime_exits(regimes, mkt)
         for ct in regime_closed:
             tg.send_trade_closed(ct)
+            state["last_analysis"].pop(ct["symbol"], None)
             closed_trades.append(ct)
             if ct["result"] == "LOSS":
                 state["daily_loss_usd"] += abs(ct["pnl_usd"])
