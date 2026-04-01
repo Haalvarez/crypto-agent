@@ -179,10 +179,12 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
             t["pnl_pct"] = 0
 
     payload = {
-        "last_update":      datetime.now().isoformat(),
-        "cycle":            state["cycles_run"],
+        "last_update":        datetime.now().isoformat(),
+        "cycle":              state["cycles_run"],
+        "analysis_cycles":    state["analysis_cycles"],
         "monitor_interval_minutes":  config.MONITOR_INTERVAL_MINUTES,
         "analysis_interval_minutes": config.ANALYSIS_INTERVAL_MINUTES,
+        "last_analysis_times": {s: t.isoformat() for s, t in state["last_analysis"].items()},
         "halted":           state["halted"],
         "fear_greed":       fng,
         "balance_usdt":     balance,
