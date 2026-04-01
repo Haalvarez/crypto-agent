@@ -240,6 +240,33 @@
     padding: 8px 18px; border-radius: 20px; display: none; z-index: 200;
   }
 
+  /* ── Close button ── */
+  .close-btn {
+    margin-top: 12px; width: 100%; padding: 10px;
+    background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+    color: #fca5a5; border-radius: 10px; font-size: .85rem;
+    font-weight: 600; cursor: pointer; transition: background .15s;
+  }
+  .close-btn:active { background: rgba(239,68,68,.25); }
+
+  /* ── Confirm modal ── */
+  .confirm-overlay {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(0,0,0,.6); display: flex;
+    align-items: flex-end; justify-content: center;
+    padding: 20px; padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+  .confirm-box {
+    background: #1a2035; border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px; max-width: 460px; width: 100%;
+  }
+  .confirm-title { font-size: 1rem; font-weight: 700; color: #fca5a5; margin-bottom: 6px; }
+  .confirm-body  { font-size: .85rem; color: var(--dim); line-height: 1.6; margin-bottom: 16px; }
+  .confirm-btns  { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .btn-cancel { padding: 11px; background: var(--card2); border: 1px solid var(--border); color: var(--dim); border-radius: 10px; font-size: .85rem; cursor: pointer; }
+  .btn-confirm{ padding: 11px; background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.4); color: #fca5a5; border-radius: 10px; font-size: .85rem; font-weight: 700; cursor: pointer; }
+  .btn-confirm:disabled { opacity: .5; cursor: not-allowed; }
+
   /* ── Tooltip ── */
   .tip-overlay {
     position: fixed; inset: 0; z-index: 300;
@@ -261,6 +288,18 @@
 </style>
 </head>
 <body>
+
+<!-- Confirm close overlay -->
+<div class="confirm-overlay" id="confirm-overlay" style="display:none">
+  <div class="confirm-box">
+    <div class="confirm-title">Cerrar posición manualmente</div>
+    <div class="confirm-body" id="confirm-body"></div>
+    <div class="confirm-btns">
+      <button class="btn-cancel"  onclick="hideConfirm()">Cancelar</button>
+      <button class="btn-confirm" id="btn-confirm-ok" onclick="executeClose()">Cerrar ahora</button>
+    </div>
+  </div>
+</div>
 
 <!-- Tooltip overlay -->
 <div class="tip-overlay" id="tip-overlay" style="display:none" onclick="hideTip()">
@@ -387,6 +426,11 @@ const REFRESH_MS = 60000;
 let refreshTimer;
 let lastAnalysisTimes = {};
 let analysisIntervalMin = 240;
+let pendingCloseId = null;
+
+// URL base del agente (Railway o local). Se puede sobreescribir con ?agent=URL
+const AGENT_URL = urlParams.get('agent') || '';
+const API_TOKEN = urlParams.get('token') || '';
 
 const urlParams = new URLSearchParams(window.location.search);
 const GIST_ID   = urlParams.get('gist') || '';
@@ -642,6 +686,9 @@ function renderPositions(positions) {
         </div>
       </div>
       <div class="pos-opened">Abierta: ${opened} (AR)</div>
+      <button class="close-btn" onclick="askClose(${p.id}, '${p.symbol}', '${p.direction}', ${pnl}, '${pnlSign}')">
+        🛑 Cerrar posición al mercado
+      </button>
     </div>`;
   }
   container.innerHTML = html;
@@ -709,6 +756,61 @@ async function loadState() {
 
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(loadState, REFRESH_MS);
+}
+
+function askClose(tradeId, symbol, direction, pnl, pnlSign) {
+  pendingCloseId = tradeId;
+  const pnlColor = pnl >= 0 ? '#10b981' : '#ef4444';
+  document.getElementById('confirm-body').innerHTML =
+    `<b>${symbol}</b> · ${direction}<br>
+     PnL actual: <span style="color:${pnlColor};font-weight:700">${pnlSign}${pnl}%</span><br><br>
+     Se ejecutará una orden de mercado inmediata. Esta acción no se puede deshacer.`;
+  document.getElementById('btn-confirm-ok').disabled = false;
+  document.getElementById('btn-confirm-ok').textContent = 'Cerrar ahora';
+  document.getElementById('confirm-overlay').style.display = 'flex';
+}
+
+function hideConfirm() {
+  document.getElementById('confirm-overlay').style.display = 'none';
+  pendingCloseId = null;
+}
+
+async function executeClose() {
+  if (!pendingCloseId) return;
+
+  if (!AGENT_URL) {
+    alert('Falta el parámetro ?agent=URL en la URL del dashboard.\nEjemplo: ?agent=https://tu-app.railway.app&token=tu-token');
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirm-ok');
+  btn.disabled = true;
+  btn.textContent = 'Cerrando...';
+
+  try {
+    const r = await fetch(`${AGENT_URL}/api/close`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ trade_id: pendingCloseId, token: API_TOKEN }),
+    });
+    const data = await r.json();
+    if (r.ok) {
+      hideConfirm();
+      await loadState();  // refrescar dashboard
+      showTip('Posición cerrada',
+        `Trade #${data.trade_id} cerrado.<br>
+         Resultado: <b>${data.result}</b><br>
+         PnL: <b>$${data.pnl_usd}</b>`);
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Cerrar ahora';
+      alert('Error: ' + (data.error || r.status));
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Cerrar ahora';
+    alert('No se pudo conectar al agente: ' + e.message);
+  }
 }
 
 function toggleCard(id) {

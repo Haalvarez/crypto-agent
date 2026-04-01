@@ -34,6 +34,10 @@ MAX_DAILY_LOSS_USD    = 15     # pérdida diaria máxima antes de detenerse
 MAX_OPEN_POSITIONS    = 2      # máximo de posiciones abiertas simultáneas
 MIN_SIGNAL_CONVICTION = 7      # convicción mínima para ejecutar
 
+# --- API interna ---
+AGENT_API_TOKEN = os.getenv("AGENT_API_TOKEN", "")   # protege /api/close
+PORT            = int(os.getenv("PORT", "8080"))       # Railway lo setea automáticamente
+
 # --- Intervalos ---
 MONITOR_INTERVAL_MINUTES  = int(os.getenv("MONITOR_INTERVAL_MINUTES",  "15"))   # SL/TP check
 ANALYSIS_INTERVAL_MINUTES = int(os.getenv("ANALYSIS_INTERVAL_MINUTES", "240"))  # régimen + Claude

@@ -4,9 +4,11 @@
 
 import json
 import os
+import threading
 import time
 import logging
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import config
 import data as market_data_module
@@ -26,6 +28,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 DASHBOARD_FILE = os.path.join(os.path.dirname(__file__), "dashboard_state.json")
+WEBROOT        = os.path.dirname(os.path.abspath(__file__))
 
 state = {
     "daily_loss_usd":  0.0,
@@ -216,6 +219,108 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
     _upload_to_gist(content)
 
 
+# ── Servidor HTTP / API ──────────────────────────────────────
+
+STATIC_TYPES = {'.html': 'text/html', '.json': 'application/json',
+                '.js': 'text/javascript', '.css': 'text/css',
+                '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json'}
+
+
+class APIHandler(BaseHTTPRequestHandler):
+
+    def _cors(self):
+        self.send_header("Access-Control-Allow-Origin",  "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
+        self.end_headers()
+
+    def do_GET(self):
+        path = self.path.split('?')[0]
+        if path in ('/', '/index.html'):
+            path = '/dashboard.html'
+        fpath = os.path.join(WEBROOT, path.lstrip('/'))
+        if os.path.isfile(fpath):
+            ext = os.path.splitext(fpath)[1]
+            ct  = STATIC_TYPES.get(ext, 'application/octet-stream')
+            with open(fpath, 'rb') as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header('Content-Type', ct)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-store')
+            self._cors()
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        if self.path == '/api/close':
+            self._handle_close()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def _handle_close(self):
+        length = int(self.headers.get('Content-Length', 0))
+        try:
+            body = json.loads(self.rfile.read(length)) if length else {}
+        except Exception:
+            self._json(400, {'error': 'JSON inválido'})
+            return
+
+        # Auth
+        if config.AGENT_API_TOKEN and body.get('token') != config.AGENT_API_TOKEN:
+            self._json(401, {'error': 'Token inválido'})
+            return
+
+        trade_id = body.get('trade_id')
+        if not trade_id:
+            self._json(400, {'error': 'trade_id requerido'})
+            return
+
+        trade = exc.get_trade_by_id(int(trade_id))
+        if not trade:
+            self._json(404, {'error': f'Trade #{trade_id} no encontrado o ya cerrado'})
+            return
+
+        try:
+            mkt   = market_data_module.get_prices_and_indicators([trade['symbol']])
+            price = mkt.get(trade['symbol'], {}).get('price', 0)
+            result = exc.market_close_trade(trade, price, 'cierre manual desde dashboard')
+            state['last_analysis'].pop(trade['symbol'], None)
+            tg.send_trade_closed(result)
+            log.info(f"[API] Trade #{trade_id} cerrado manualmente | {result['result']} | PnL ${result['pnl_usd']}")
+            self._json(200, result)
+        except Exception as e:
+            log.error(f"[API] Error cerrando #{trade_id}: {e}")
+            self._json(500, {'error': str(e)})
+
+    def _json(self, code, data):
+        body = json.dumps(data, default=str).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self._cors()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, fmt, *args):
+        if args and str(args[1]) not in ('200', '204', '304'):
+            log.info(f'[HTTP] {fmt % args}')
+
+
+def start_api_server():
+    server = HTTPServer(('0.0.0.0', config.PORT), APIHandler)
+    log.info(f"HTTP server en puerto {config.PORT}")
+    server.serve_forever()
+
+
 # ── Ciclo principal ───────────────────────────────────────────
 
 def run_cycle():
@@ -351,6 +456,9 @@ def main():
     log.info("=== CRYPTO AGENT v3 ARRANCANDO ===")
     exc.init_db()
     tg.send_startup()
+
+    # HTTP server en daemon thread (sirve dashboard + API /api/close)
+    threading.Thread(target=start_api_server, daemon=True, name="api-server").start()
 
     while True:
         reset_daily_state_if_needed()

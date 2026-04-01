@@ -119,6 +119,24 @@ def get_open_position(symbol: str) -> dict | None:
     }
 
 
+def get_trade_by_id(trade_id: int) -> dict | None:
+    """Retorna un trade OPEN por ID, o None si no existe o ya está cerrado."""
+    conn = sqlite3.connect('trades.db')
+    row  = conn.execute(
+        """SELECT id, symbol, direction, entry_price, stop_loss, take_profit, quantity, opened_at
+           FROM trades WHERE id=? AND status='OPEN'""",
+        (trade_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "id": row[0], "symbol": row[1], "direction": row[2],
+        "entry_price": row[3], "stop_loss": row[4], "take_profit": row[5],
+        "quantity": row[6], "opened_at": row[7],
+    }
+
+
 def market_close_trade(trade: dict, current_price: float, reason: str) -> dict:
     """
     Cierra un trade al precio de mercado (no espera stop/target).
