@@ -454,11 +454,14 @@ def run_cycle():
 
 def main():
     log.info("=== CRYPTO AGENT v3 ARRANCANDO ===")
+
+    # HTTP server arranca primero — Railway necesita que el puerto esté escuchando
+    # antes de marcar el proceso como healthy
+    threading.Thread(target=start_api_server, daemon=True, name="api-server").start()
+    log.info(f"HTTP server arrancado en puerto {config.PORT}")
+
     exc.init_db()
     tg.send_startup()
-
-    # HTTP server en daemon thread (sirve dashboard + API /api/close)
-    threading.Thread(target=start_api_server, daemon=True, name="api-server").start()
 
     while True:
         reset_daily_state_if_needed()
