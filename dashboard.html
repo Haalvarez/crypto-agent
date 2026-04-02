@@ -428,12 +428,10 @@ let lastAnalysisTimes = {};
 let analysisIntervalMin = 240;
 let pendingCloseId = null;
 
-// URL base del agente (Railway o local). Se puede sobreescribir con ?agent=URL
-const AGENT_URL = urlParams.get('agent') || '';
-const API_TOKEN = urlParams.get('token') || '';
-
 const urlParams = new URLSearchParams(window.location.search);
 const GIST_ID   = urlParams.get('gist') || '';
+const AGENT_URL = urlParams.get('agent') || '';
+const API_TOKEN = urlParams.get('token') || '';
 const STATE_URL = GIST_ID
   ? `https://gist.githubusercontent.com/raw/${GIST_ID}/dashboard_state.json`
   : 'dashboard_state.json';
