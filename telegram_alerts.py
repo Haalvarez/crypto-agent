@@ -31,15 +31,15 @@ def send(text: str, silent: bool = False) -> bool:
 
 
 def send_startup() -> None:
-    from config import SYMBOLS, INTERVAL_MINUTES
-    symbols_str = " · ".join(s.replace("/USDT", "") for s in SYMBOLS)
-    hours = INTERVAL_MINUTES // 60
-    interval_str = f"{hours}h" if INTERVAL_MINUTES >= 60 else f"{INTERVAL_MINUTES}min"
+    from config import SYMBOLS, MONITOR_INTERVAL_MINUTES, ANALYSIS_INTERVAL_MINUTES
+    symbols_str   = " · ".join(s.replace("/USDT", "") for s in SYMBOLS)
+    monitor_str   = f"{MONITOR_INTERVAL_MINUTES}min"
+    analysis_str  = f"{ANALYSIS_INTERVAL_MINUTES // 60}h" if ANALYSIS_INTERVAL_MINUTES >= 60 else f"{ANALYSIS_INTERVAL_MINUTES}min"
     send(
         "🤖 <b>Crypto Agent iniciado</b>\n"
         f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
         f"📡 Monitoreando {symbols_str}\n"
-        f"🔄 Ciclo cada {interval_str}\n"
+        f"🔍 Monitor cada {monitor_str} · Análisis Claude cada {analysis_str}\n"
         "────────────────────"
     )
 
