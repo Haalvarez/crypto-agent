@@ -294,6 +294,11 @@
   <div class="confirm-box">
     <div class="confirm-title">Cerrar posición manualmente</div>
     <div class="confirm-body" id="confirm-body"></div>
+    <div id="token-row" style="display:none;margin-bottom:12px;">
+      <input id="token-input" type="password" placeholder="Token (AGENT_API_TOKEN)"
+        style="width:100%;padding:10px 12px;background:#0f1424;border:1px solid #1e2640;
+               color:#e2e8f0;border-radius:10px;font-size:.85rem;outline:none;">
+    </div>
     <div class="confirm-btns">
       <button class="btn-cancel"  onclick="hideConfirm()">Cancelar</button>
       <button class="btn-confirm" id="btn-confirm-ok" onclick="executeClose()">Cerrar ahora</button>
@@ -428,13 +433,16 @@ let lastAnalysisTimes = {};
 let analysisIntervalMin = 240;
 let pendingCloseId = null;
 
-const urlParams = new URLSearchParams(window.location.search);
-const GIST_ID   = urlParams.get('gist') || '';
-const AGENT_URL = urlParams.get('agent') || '';
-const API_TOKEN = urlParams.get('token') || '';
-const STATE_URL = GIST_ID
+const urlParams  = new URLSearchParams(window.location.search);
+const GIST_ID    = urlParams.get('gist') || '';
+const AGENT_URL  = window.location.origin;   // mismo dominio (Railway)
+const STATE_URL  = GIST_ID
   ? `https://gist.githubusercontent.com/raw/${GIST_ID}/dashboard_state.json`
-  : 'dashboard_state.json';
+  : '/dashboard_state.json';
+
+function getToken()       { return sessionStorage.getItem('agent_token') || ''; }
+function setToken(t)      { sessionStorage.setItem('agent_token', t); }
+function clearToken()     { sessionStorage.removeItem('agent_token'); }
 
 const REGIME_CLASSES = {
   BULL_TREND: 'rb-bull', BEAR_TREND: 'rb-bear', SIDEWAYS: 'rb-side', REVERSAL: 'rb-rev',
@@ -763,6 +771,16 @@ function askClose(tradeId, symbol, direction, pnl, pnlSign) {
     `<b>${symbol}</b> · ${direction}<br>
      PnL actual: <span style="color:${pnlColor};font-weight:700">${pnlSign}${pnl}%</span><br><br>
      Se ejecutará una orden de mercado inmediata. Esta acción no se puede deshacer.`;
+
+  // Si no hay token guardado, mostrar input de token dentro del modal
+  const tokenRow = document.getElementById('token-row');
+  if (!getToken()) {
+    tokenRow.style.display = 'block';
+    document.getElementById('token-input').value = '';
+  } else {
+    tokenRow.style.display = 'none';
+  }
+
   document.getElementById('btn-confirm-ok').disabled = false;
   document.getElementById('btn-confirm-ok').textContent = 'Cerrar ahora';
   document.getElementById('confirm-overlay').style.display = 'flex';
@@ -776,12 +794,12 @@ function hideConfirm() {
 async function executeClose() {
   if (!pendingCloseId) return;
 
-  if (!AGENT_URL) {
-    alert('Falta el parámetro ?agent=URL en la URL del dashboard.\nEjemplo: ?agent=https://tu-app.railway.app&token=tu-token');
-    return;
-  }
+  // Guardar token si se ingresó en el modal
+  const tokenInput = document.getElementById('token-input').value.trim();
+  if (tokenInput) setToken(tokenInput);
 
-  const btn = document.getElementById('btn-confirm-ok');
+  const token = getToken();
+  const btn   = document.getElementById('btn-confirm-ok');
   btn.disabled = true;
   btn.textContent = 'Cerrando...';
 
@@ -789,17 +807,19 @@ async function executeClose() {
     const r = await fetch(`${AGENT_URL}/api/close`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ trade_id: pendingCloseId, token: API_TOKEN }),
+      body:    JSON.stringify({ trade_id: pendingCloseId, token }),
     });
     const data = await r.json();
     if (r.ok) {
       hideConfirm();
-      await loadState();  // refrescar dashboard
+      await loadState();
       showTip('Posición cerrada',
         `Trade #${data.trade_id} cerrado.<br>
          Resultado: <b>${data.result}</b><br>
          PnL: <b>$${data.pnl_usd}</b>`);
     } else {
+      // Token incorrecto → limpiarlo para que lo vuelva a pedir
+      if (r.status === 401) clearToken();
       btn.disabled = false;
       btn.textContent = 'Cerrar ahora';
       alert('Error: ' + (data.error || r.status));
