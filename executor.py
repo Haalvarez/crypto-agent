@@ -3,6 +3,7 @@
 #  Ejecuta órdenes en Binance Testnet cuando hay señal accionable
 # =============================================================
 
+import os
 import sqlite3
 import ccxt
 from datetime import datetime
@@ -10,6 +11,9 @@ from config import (
     BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET,
     MAX_TRADE_USD, MAX_OPEN_POSITIONS
 )
+
+# Railway Volume en /data, fallback a directorio local
+DB_PATH = os.path.join(os.getenv('DATA_DIR', '.'), 'trades.db')
 
 
 # ── Conexión al exchange ──────────────────────────────────────
@@ -31,7 +35,7 @@ def get_exchange():
 # ── Base de datos SQLite ──────────────────────────────────────
 
 def init_db():
-    conn = sqlite3.connect('trades.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.execute('''
         CREATE TABLE IF NOT EXISTS trades (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +60,7 @@ def init_db():
 
 
 def save_trade(trade: dict) -> int:
-    conn = sqlite3.connect('trades.db')
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.execute('''
         INSERT INTO trades
         (symbol, direction, conviction, entry_price, stop_loss, take_profit,
@@ -75,7 +79,7 @@ def save_trade(trade: dict) -> int:
 
 
 def get_open_trades() -> list:
-    conn = sqlite3.connect('trades.db')
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.execute("SELECT * FROM trades WHERE status = 'OPEN'")
     trades = cur.fetchall()
     conn.close()
@@ -83,7 +87,7 @@ def get_open_trades() -> list:
 
 
 def count_open_trades() -> int:
-    conn = sqlite3.connect('trades.db')
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.execute("SELECT COUNT(*) FROM trades WHERE status = 'OPEN'")
     count = cur.fetchone()[0]
     conn.close()
@@ -92,7 +96,7 @@ def count_open_trades() -> int:
 
 def has_open_position(symbol: str) -> bool:
     """Retorna True si el par ya tiene una posición abierta."""
-    conn  = sqlite3.connect('trades.db')
+    conn  = sqlite3.connect(DB_PATH)
     count = conn.execute(
         "SELECT COUNT(*) FROM trades WHERE status='OPEN' AND symbol=?", (symbol,)
     ).fetchone()[0]
@@ -102,7 +106,7 @@ def has_open_position(symbol: str) -> bool:
 
 def get_open_position(symbol: str) -> dict | None:
     """Retorna la posición abierta de un par, o None si no hay."""
-    conn  = sqlite3.connect('trades.db')
+    conn  = sqlite3.connect(DB_PATH)
     row   = conn.execute(
         """SELECT id, symbol, direction, entry_price, stop_loss, take_profit,
                   quantity, opened_at
@@ -121,7 +125,7 @@ def get_open_position(symbol: str) -> dict | None:
 
 def get_trade_by_id(trade_id: int) -> dict | None:
     """Retorna un trade OPEN por ID, o None si no existe o ya está cerrado."""
-    conn = sqlite3.connect('trades.db')
+    conn = sqlite3.connect(DB_PATH)
     row  = conn.execute(
         """SELECT id, symbol, direction, entry_price, stop_loss, take_profit, quantity, opened_at
            FROM trades WHERE id=? AND status='OPEN'""",
@@ -292,7 +296,7 @@ def get_balance_usdt() -> float:
 
 def close_trade(trade_id: int, exit_price: float, result: str) -> None:
     """Marca un trade como cerrado en la DB con PnL calculado."""
-    conn = sqlite3.connect('trades.db')
+    conn = sqlite3.connect(DB_PATH)
     trade = conn.execute(
         "SELECT direction, entry_price, quantity FROM trades WHERE id = ?", (trade_id,)
     ).fetchone()
@@ -317,7 +321,7 @@ def check_open_positions(market_data: dict) -> list[dict]:
     Cierra las que tocaron stop-loss o take-profit.
     Retorna lista de trades cerrados en este ciclo.
     """
-    conn   = sqlite3.connect('trades.db')
+    conn   = sqlite3.connect(DB_PATH)
     trades = conn.execute(
         "SELECT id, symbol, direction, entry_price, stop_loss, take_profit, quantity FROM trades WHERE status='OPEN'"
     ).fetchall()
@@ -363,7 +367,7 @@ def check_open_positions(market_data: dict) -> list[dict]:
 
 def get_all_trades_stats() -> dict:
     """Retorna estadísticas globales de todos los trades."""
-    conn  = sqlite3.connect('trades.db')
+    conn  = sqlite3.connect(DB_PATH)
     rows  = conn.execute("SELECT status, pnl_usd FROM trades").fetchall()
     open_ = conn.execute("SELECT id, symbol, direction, entry_price, stop_loss, take_profit, opened_at FROM trades WHERE status='OPEN'").fetchall()
     conn.close()
