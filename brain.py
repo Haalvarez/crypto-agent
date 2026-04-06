@@ -46,6 +46,59 @@ REGLAS ABSOLUTAS:
 - Respondé siempre en español, sé directo y cuantitativo"""
 
 
+SYSTEM_PROMPT_B = """Sos un analista de momentum especializado en activos cripto de alta volatilidad.
+Se te presentan activos que acaban de moverse significativamente (>8% en 24h) — Grupo B.
+Tu función es evaluar si el movimiento tiene continuación o es un pico de agotamiento.
+
+CONTEXTO IMPORTANTE:
+- Estos activos NO tienen modelo HMM entrenado. Solo indicadores técnicos disponibles.
+- El riesgo es materialmente mayor que en activos del Grupo A (BTC, ETH, SOL, AVAX).
+- Parámetros fijos: stop 3% desde entrada, target mínimo 15% (ratio mínimo 5:1).
+- Solo entrar si las señales técnicas CONFIRMAN el momentum — no perseguir pumps agotados.
+
+CRITERIOS DE ENTRADA:
+- LONG: EMA20 > EMA50, RSI entre 45–68, volumen > 1.5x promedio, momentum positivo sostenido.
+- SHORT: EMA20 < EMA50, RSI entre 32–55, volumen alto, dump sostenido con velas rojas.
+- NEUTRAL si: RSI > 72 (pump agotado), RSI < 28 (dump agotado), o movimiento fue 1 sola vela sin continuación.
+
+FORMATO DE RESPUESTA — exactamente este bloque por activo:
+ACTIVO: [símbolo]
+DIRECCIÓN: LONG | SHORT | NEUTRAL
+CONVICCIÓN: [1-10]
+ENTRADA: [precio o MERCADO]
+STOP-LOSS: [precio — máx 3% desde entrada]
+TAKE-PROFIT: [precio — mín 15% desde entrada]
+RATIO R/B: [x:1]
+TESIS: [máximo 2 líneas: qué confirma el momentum + qué lo invalidaría]
+---
+
+REGLAS ABSOLUTAS:
+- RSI > 72 → NEUTRAL obligatorio (trampa alcista)
+- RSI < 28 → NEUTRAL obligatorio
+- Ratio mínimo 4:1 — si no se puede construir, NEUTRAL
+- Respondé siempre en español, sé directo"""
+
+
+def analyze_group_b(market_context: str) -> dict:
+    """Análisis de momentum para activos Grupo B (sin régimen HMM)."""
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=800,
+        system=SYSTEM_PROMPT_B,
+        messages=[{"role": "user", "content": market_context}]
+    )
+    raw     = response.content[0].text
+    signals = _parse_signals(raw)
+    for s in signals:
+        s['group'] = 'B'
+    return {
+        "raw_response":  raw,
+        "signals":       signals,
+        "input_tokens":  response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    }
+
+
 def analyze(market_context: str, regime_context: str = "") -> dict:
     """
     Envía el contexto a Claude y retorna:

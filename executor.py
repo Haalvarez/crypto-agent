@@ -3,6 +3,7 @@
 #  Ejecuta órdenes en Binance Testnet cuando hay señal accionable
 # =============================================================
 
+import json
 import os
 import sqlite3
 import ccxt
@@ -52,11 +53,77 @@ def init_db():
             exit_price  REAL,
             pnl_usd     REAL,
             opened_at   TEXT,
-            closed_at   TEXT
+            closed_at   TEXT,
+            group_name  TEXT DEFAULT 'A'
+        )
+    ''')
+    # Migración: agregar group_name si no existe (DB preexistente)
+    try:
+        conn.execute("ALTER TABLE trades ADD COLUMN group_name TEXT DEFAULT 'A'")
+    except Exception:
+        pass
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS events (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp  TEXT    NOT NULL,
+            type       TEXT    NOT NULL,
+            symbol     TEXT,
+            group_name TEXT,
+            level      TEXT    DEFAULT 'INFO',
+            title      TEXT    NOT NULL,
+            details    TEXT
         )
     ''')
     conn.commit()
     conn.close()
+
+
+def log_event(type: str, title: str, symbol: str = None, group: str = None,
+              level: str = 'INFO', details: dict = None) -> None:
+    """Registra un evento en la tabla events."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            """INSERT INTO events (timestamp, type, symbol, group_name, level, title, details)
+               VALUES (?,?,?,?,?,?,?)""",
+            (datetime.now().isoformat(), type, symbol, group, level, title,
+             json.dumps(details, default=str) if details else None)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"  [executor] log_event ERROR: {e}")
+
+
+def get_events(limit: int = 100, offset: int = 0,
+               type_filter: str = None, symbol_filter: str = None) -> list[dict]:
+    """Retorna eventos ordenados por timestamp descendente."""
+    conn  = sqlite3.connect(DB_PATH)
+    where = []
+    args  = []
+    if type_filter:
+        where.append("type = ?");   args.append(type_filter)
+    if symbol_filter:
+        where.append("symbol = ?"); args.append(symbol_filter)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    rows = conn.execute(
+        f"SELECT id,timestamp,type,symbol,group_name,level,title,details "
+        f"FROM events {clause} ORDER BY id DESC LIMIT ? OFFSET ?",
+        args + [limit, offset]
+    ).fetchall()
+    total = conn.execute(f"SELECT COUNT(*) FROM events {clause}", args).fetchone()[0]
+    conn.close()
+    result = []
+    for r in rows:
+        d = {'id':r[0],'timestamp':r[1],'type':r[2],'symbol':r[3],
+             'group':r[4],'level':r[5],'title':r[6]}
+        try:
+            d['details'] = json.loads(r[7]) if r[7] else None
+        except Exception:
+            d['details'] = r[7]
+        result.append(d)
+    return result, total
 
 
 def save_trade(trade: dict) -> int:
@@ -64,13 +131,13 @@ def save_trade(trade: dict) -> int:
     cur = conn.execute('''
         INSERT INTO trades
         (symbol, direction, conviction, entry_price, stop_loss, take_profit,
-         quantity, usd_value, order_id, status, opened_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?)
+         quantity, usd_value, order_id, status, opened_at, group_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)
     ''', (
         trade['symbol'], trade['direction'], trade['conviction'],
         trade['entry_price'], trade['stop_loss'], trade['take_profit'],
         trade['quantity'], trade['usd_value'], trade['order_id'],
-        datetime.now().isoformat()
+        datetime.now().isoformat(), trade.get('group_name', 'A')
     ))
     trade_id = cur.lastrowid
     conn.commit()
@@ -194,7 +261,7 @@ def parse_price(value: str) -> float:
 
 # ── Ejecución principal ───────────────────────────────────────
 
-def execute_signal(signal: dict, market_data: dict) -> dict | None:
+def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> dict | None:
     """
     Ejecuta una señal accionable en Binance.
     Retorna dict con resultado o None si no se ejecutó.

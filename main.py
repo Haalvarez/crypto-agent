@@ -31,18 +31,19 @@ DASHBOARD_FILE = os.path.join(os.path.dirname(__file__), "dashboard_state.json")
 WEBROOT        = os.path.dirname(os.path.abspath(__file__))
 
 state = {
-    "daily_loss_usd":  0.0,
-    "halted":          False,
-    "cycles_run":      0,
-    "analysis_cycles": 0,
-    "last_reset_date": datetime.now().date(),
-    # Cuándo fue el último análisis Claude por par
-    "last_analysis":   {},   # {symbol: datetime}
-    # Contadores por par — persisten mientras el proceso corre
-    "pair_stats":      {sym: {"queries": 0, "actionable": 0, "discarded": 0, "last_signal": None,
-                              "last_conviction": 0, "last_regime": None, "last_price": 0,
-                              "last_rsi": 0, "last_trend": None}
-                        for sym in config.SYMBOLS},
+    "daily_loss_usd":    0.0,
+    "halted":            False,
+    "cycles_run":        0,
+    "analysis_cycles":   0,
+    "last_reset_date":   datetime.now().date(),
+    "last_analysis":     {},          # {symbol: datetime}
+    "last_regimes":      {},          # {symbol: regime} — para detectar cambios
+    "last_group_b_scan": None,        # date — para scan diario
+    "group_b_symbols":   [],          # pares activos del Grupo B
+    "pair_stats":        {sym: {"queries": 0, "actionable": 0, "discarded": 0, "last_signal": None,
+                                "last_conviction": 0, "last_regime": None, "last_price": 0,
+                                "last_rsi": 0, "last_trend": None}
+                          for sym in config.SYMBOLS},
 }
 
 
@@ -96,9 +97,52 @@ def _check_regime_exits(regimes: dict, mkt: dict) -> list[dict]:
         if should_exit:
             log.info(f"  [regime exit] {sym}: {direction} cerrado — régimen cambió a {regime}")
             ct = exc.market_close_trade(trade, price, f"cambio de régimen a {regime}")
+            exc.log_event("REGIME_EXIT",
+                          f"{sym} {direction} cerrado — régimen → {regime}",
+                          symbol=sym, level="WARNING",
+                          details={"direction": direction, "regime": regime,
+                                   "result": ct["result"], "pnl_usd": ct["pnl_usd"]})
             closed.append(ct)
 
     return closed
+
+
+def _scan_group_b() -> list[str]:
+    """
+    Escanea top movers de Binance una vez por día.
+    Retorna lista de símbolos nuevos del Grupo B.
+    """
+    today = datetime.now().date()
+    if state["last_group_b_scan"] == today:
+        return state["group_b_symbols"]
+
+    if not config.GROUP_B_ENABLED:
+        return []
+
+    log.info("[Grupo B] Escaneando top movers del día...")
+    movers = market_data_module.get_top_movers(
+        symbols_a=config.SYMBOLS,
+        n=config.GROUP_B_TOP_MOVERS,
+        min_change_pct=config.GROUP_B_MIN_CHANGE_PCT,
+        min_volume_usd=config.GROUP_B_MIN_VOLUME_USD,
+    )
+
+    state["last_group_b_scan"] = today
+    state["group_b_symbols"]   = [m["symbol"] for m in movers]
+
+    if movers:
+        for m in movers:
+            log.info(f"  [Grupo B] {m['symbol']} | {m['change_24h']:+.1f}% | vol ${m['volume_usd']/1e6:.0f}M")
+            exc.log_event("MOVER_DETECTED", f"{m['symbol']} {m['change_24h']:+.1f}% en 24h",
+                          symbol=m["symbol"], group="B", level="WARNING",
+                          details={"change_24h": m["change_24h"],
+                                   "volume_usd": m["volume_usd"], "price": m["price"]})
+    else:
+        log.info("  [Grupo B] Sin movers que superen el umbral hoy.")
+        exc.log_event("GROUP_B_SCAN", "Scan diario: sin movers calificados",
+                      level="INFO", details={"min_change": config.GROUP_B_MIN_CHANGE_PCT,
+                                             "min_volume": config.GROUP_B_MIN_VOLUME_USD})
+    return state["group_b_symbols"]
 
 
 def _log_regimes(regimes: dict) -> None:
@@ -242,6 +286,12 @@ class APIHandler(BaseHTTPRequestHandler):
         path = self.path.split('?')[0]
         if path in ('/', '/index.html'):
             path = '/dashboard.html'
+
+        # API endpoints
+        if path == '/api/events':
+            self._handle_events()
+            return
+
         fpath = os.path.join(WEBROOT, path.lstrip('/'))
         if os.path.isfile(fpath):
             ext = os.path.splitext(fpath)[1]
@@ -258,6 +308,16 @@ class APIHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def _handle_events(self):
+        params      = dict(p.split('=') for p in self.path.split('?')[1].split('&') if '=' in p) \
+                      if '?' in self.path else {}
+        limit       = min(int(params.get('limit',  '100')), 500)
+        offset      = int(params.get('offset', '0'))
+        type_filter = params.get('type')
+        sym_filter  = params.get('symbol')
+        events, total = exc.get_events(limit, offset, type_filter, sym_filter)
+        self._json(200, {'total': total, 'limit': limit, 'offset': offset, 'events': events})
 
     def do_POST(self):
         if self.path == '/api/close':
@@ -327,44 +387,68 @@ def run_cycle():
     cycle_num = state["cycles_run"] + 1
     log.info(f"── Ciclo #{cycle_num} iniciando ──")
 
-    # 1. Datos de mercado
+    # 1. Scan Grupo B — una vez por día
+    group_b_symbols = _scan_group_b()
+
+    # 2. Datos de mercado — Grupo A + Grupo B activos
+    all_symbols = config.SYMBOLS + [s for s in group_b_symbols if s not in config.SYMBOLS]
     try:
-        mkt          = market_data_module.get_prices_and_indicators(config.SYMBOLS)
-        fng          = market_data_module.get_fear_and_greed()
-        context_text = market_data_module.format_market_context(mkt, fng)
+        mkt = market_data_module.get_prices_and_indicators(all_symbols)
+        fng = market_data_module.get_fear_and_greed()
         log.info("Datos de mercado OK")
     except Exception as e:
         log.error(f"Error datos: {e}")
         tg.send_error("fetch datos", str(e))
         return
 
-    # 2. Monitor posiciones abiertas — cerrar las que tocaron stop/target
+    # 3. Monitor posiciones abiertas — cerrar las que tocaron stop/target
+    closed_trades = []
     try:
         closed_trades = exc.check_open_positions(mkt)
         for ct in closed_trades:
             tg.send_trade_closed(ct)
-            # Trade cerrado → resetear last_analysis para que el par se analice en el próximo ciclo
             state["last_analysis"].pop(ct["symbol"], None)
+            level = "SUCCESS" if ct["result"] == "WIN" else "ERROR"
+            exc.log_event("TRADE_CLOSE",
+                          f"{ct['symbol']} {ct['direction']} → {ct['result']} | PnL ${ct['pnl_usd']:+.2f}",
+                          symbol=ct["symbol"], level=level,
+                          details={**ct, "reason": ct.get("reason", "stop/target")})
             if ct["result"] == "LOSS":
                 state["daily_loss_usd"] += abs(ct["pnl_usd"])
                 if state["daily_loss_usd"] >= config.MAX_DAILY_LOSS_USD:
                     state["halted"] = True
                     tg.send_daily_limit_hit(state["daily_loss_usd"])
+                    exc.log_event("DAILY_HALT", f"Límite diario alcanzado: ${state['daily_loss_usd']:.2f}",
+                                  level="ERROR", details={"daily_loss": state["daily_loss_usd"]})
                     log.warning("Límite de pérdida diaria alcanzado — agente detenido.")
     except Exception as e:
         log.error(f"Error monitor posiciones: {e}")
 
-    # 3. Régimen HMM
+    # 4. Régimen HMM
     try:
         regimes        = regime_module.classify_all(config.SYMBOLS)
         regime_context = regime_module.format_regime_context(regimes)
         _log_regimes(regimes)
+        # Detectar cambios de régimen y loguearlos como eventos
+        for sym, info in regimes.items():
+            if not info.get("available"):
+                continue
+            new_regime  = info.get("regime")
+            prev_regime = state["last_regimes"].get(sym)
+            if prev_regime and prev_regime != new_regime:
+                exc.log_event("REGIME_CHANGE",
+                              f"{sym}: {prev_regime} → {new_regime}",
+                              symbol=sym, level="INFO",
+                              details={"from": prev_regime, "to": new_regime,
+                                       "hours": info.get("hours_in_regime", 0),
+                                       "persist_prob": info.get("persist_prob", 0)})
+            state["last_regimes"][sym] = new_regime
     except Exception as e:
         log.warning(f"Régimen no disponible: {e}")
         regimes        = {}
         regime_context = ""
 
-    # 4. Salida por cambio de régimen (sin Claude)
+    # 5. Salida por cambio de régimen (sin Claude)
     try:
         regime_closed = _check_regime_exits(regimes, mkt)
         for ct in regime_closed:
@@ -379,72 +463,104 @@ def run_cycle():
     except Exception as e:
         log.error(f"Error regime exits: {e}")
 
-    # 5. Análisis Claude — solo pares SIN posición abierta Y con análisis vencido (>4h)
-    free_symbols    = [s for s in config.SYMBOLS if not exc.has_open_position(s)]
-    blocked_symbols = [s for s in config.SYMBOLS if exc.has_open_position(s)]
-    due_symbols     = [s for s in free_symbols if needs_analysis(s)]
-
-    if blocked_symbols:
-        log.info(f"  Skip Claude (posición abierta): {', '.join(blocked_symbols)}")
-    not_due = [s for s in free_symbols if s not in due_symbols]
-    if not_due:
-        mins_each = {s: int((datetime.now() - state["last_analysis"][s]).total_seconds() / 60)
-                     for s in not_due}
-        log.info(f"  Skip Claude (análisis reciente): " +
-                 ", ".join(f"{s} ({config.ANALYSIS_INTERVAL_MINUTES - m}min restantes)"
-                           for s, m in mins_each.items()))
-
     signals = []
     tokens  = 0
 
-    if due_symbols and not state["halted"]:
+    # 6a. Análisis Claude Grupo A — pares libres con análisis vencido
+    free_a   = [s for s in config.SYMBOLS if not exc.has_open_position(s)]
+    due_a    = [s for s in free_a if needs_analysis(s)]
+    blocked  = [s for s in config.SYMBOLS if exc.has_open_position(s)]
+    if blocked:
+        log.info(f"  Skip Claude (posición abierta): {', '.join(blocked)}")
+
+    if due_a and not state["halted"]:
         try:
-            due_mkt     = {s: mkt[s] for s in due_symbols if s in mkt}
-            due_context = market_data_module.format_market_context(due_mkt, fng)
-            due_regime  = regime_module.format_regime_context(
-                {s: regimes[s] for s in due_symbols if s in regimes}
+            due_mkt    = {s: mkt[s] for s in due_a if s in mkt}
+            due_ctx    = market_data_module.format_market_context(due_mkt, fng)
+            due_regime = regime_module.format_regime_context(
+                {s: regimes[s] for s in due_a if s in regimes}
             )
-            result  = brain.analyze(due_context, due_regime)
+            result  = brain.analyze(due_ctx, due_regime)
             signals = result["signals"]
-            tokens  = result["input_tokens"] + result["output_tokens"]
-            log.info(f"Claude OK — {len(signals)} señales — {tokens} tokens ({len(due_symbols)} pares)")
-            # Registrar timestamp de análisis para cada par consultado
-            for s in due_symbols:
+            tokens += result["input_tokens"] + result["output_tokens"]
+            log.info(f"Claude A OK — {len(signals)} señales — {tokens} tokens")
+            for s in due_a:
                 state["last_analysis"][s] = datetime.now()
             state["analysis_cycles"] += 1
+            # Loguear señales
+            for sig in signals:
+                lvl = "INFO" if not sig.get("actionable") else "WARNING"
+                exc.log_event("CLAUDE_SIGNAL",
+                              f"{sig['symbol']} → {sig['direction']} (conv {sig.get('conviction',0)}/10)",
+                              symbol=sig["symbol"], group="A", level=lvl,
+                              details={"direction": sig["direction"],
+                                       "conviction": sig.get("conviction"),
+                                       "actionable": sig.get("actionable"),
+                                       "thesis": sig.get("thesis","")})
         except Exception as e:
-            log.error(f"Error brain: {e}")
-            tg.send_error("análisis Claude", str(e))
-            return
-    elif not free_symbols:
-        log.info("Todos los pares tienen posición abierta — skip Claude este ciclo")
-    elif not due_symbols:
-        log.info("Sin pares vencidos para análisis — ciclo de monitoreo")
+            log.error(f"Error brain A: {e}")
+            tg.send_error("análisis Claude A", str(e))
 
-    # 6. Ejecutar señales accionables
+    # 6b. Análisis Claude Grupo B — movers sin posición abierta
+    if group_b_symbols and not state["halted"]:
+        # Controlar máx posiciones Grupo B
+        open_b = sum(1 for s in group_b_symbols if exc.has_open_position(s))
+        free_b = [s for s in group_b_symbols
+                  if not exc.has_open_position(s) and needs_analysis(s)]
+
+        if free_b and open_b < config.GROUP_B_MAX_POSITIONS:
+            try:
+                b_mkt = {s: mkt[s] for s in free_b if s in mkt}
+                b_ctx = market_data_module.format_market_context(b_mkt, fng)
+                result_b  = brain.analyze_group_b(b_ctx)
+                signals_b = result_b["signals"]
+                tokens   += result_b["input_tokens"] + result_b["output_tokens"]
+                log.info(f"Claude B OK — {len(signals_b)} señales")
+                for s in free_b:
+                    state["last_analysis"][s] = datetime.now()
+                for sig in signals_b:
+                    exc.log_event("CLAUDE_SIGNAL",
+                                  f"[B] {sig['symbol']} → {sig['direction']} (conv {sig.get('conviction',0)}/10)",
+                                  symbol=sig["symbol"], group="B",
+                                  level="WARNING" if sig.get("actionable") else "INFO",
+                                  details={"direction": sig["direction"],
+                                           "conviction": sig.get("conviction"),
+                                           "actionable": sig.get("actionable"),
+                                           "thesis": sig.get("thesis","")})
+                signals += signals_b
+            except Exception as e:
+                log.error(f"Error brain B: {e}")
+
+    # 7. Ejecutar señales accionables
     for signal in signals:
         if signal.get("actionable") and not state["halted"]:
-            log.info(f"Ejecutando: {signal['symbol']} {signal['direction']}")
-            res = exc.execute_signal(signal, mkt)
+            is_b     = signal.get("group") == "B"
+            stop_pct = config.STOP_LOSS_PCT_B   if is_b else config.STOP_LOSS_PCT
+            log.info(f"Ejecutando: {signal['symbol']} {signal['direction']} (Grupo {'B' if is_b else 'A'})")
+            signal["group_name"] = "B" if is_b else "A"
+            res = exc.execute_signal(signal, mkt, stop_pct=stop_pct)
             if res:
                 tg.send_execution_confirmation(res)
+                exc.log_event("TRADE_OPEN",
+                              f"{res['symbol']} {res['direction']} @ ${res['entry_price']:,.4f}",
+                              symbol=res["symbol"], group=signal["group_name"], level="INFO",
+                              details={**res, "group": signal["group_name"]})
             else:
                 log.warning(f"No ejecutado: {signal['symbol']}")
 
-    # Notificar solo si hay algo accionable — silencio si todo es NEUTRAL
     actionable = [s for s in signals if s.get("actionable")]
     if actionable:
         for sig in actionable:
             tg.send_signal(sig, mkt)
 
-    # 6. Actualizar contadores y estado
+    # 8. Actualizar contadores y estado
     _update_pair_stats(signals, mkt, regimes)
 
-    # 7. Dashboard state
+    # 9. Dashboard state
     balance = exc.get_balance_usdt()
     write_dashboard_state(mkt, fng, regimes, signals, balance)
 
-    # 8. Resumen Telegram cada 3 ciclos de análisis (≈12h) o si hubo cierres
+    # 10. Resumen Telegram
     if state["analysis_cycles"] % 3 == 0 and signals or closed_trades:
         tg.send_cycle_summary(signals, fng, tokens, balance, regimes)
 
@@ -461,6 +577,14 @@ def main():
     log.info(f"HTTP server arrancado en puerto {config.PORT}")
 
     exc.init_db()
+    exc.log_event("STARTUP", "Agente iniciado",
+                  level="INFO", details={
+                      "symbols_a": config.SYMBOLS,
+                      "group_b_enabled": config.GROUP_B_ENABLED,
+                      "testnet": config.BINANCE_TESTNET,
+                      "monitor_min": config.MONITOR_INTERVAL_MINUTES,
+                      "analysis_min": config.ANALYSIS_INTERVAL_MINUTES,
+                  })
     tg.send_startup()
 
     while True:

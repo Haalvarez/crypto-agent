@@ -82,6 +82,51 @@ def get_prices_and_indicators_for(symbols: list[str]) -> dict:
     return get_prices_and_indicators(symbols)
 
 
+def get_top_movers(symbols_a: list[str], n: int = 2,
+                   min_change_pct: float = 8.0,
+                   min_volume_usd: float = 50_000_000) -> list[dict]:
+    """
+    Escanea todos los pares USDT de Binance y devuelve los N con mayor
+    movimiento absoluto en 24h, filtrando por volumen mínimo.
+    Excluye stablecoins, tokens wrapped y los símbolos del Grupo A.
+    """
+    EXCLUDE = {'USDC','BUSD','DAI','TUSD','FDUSD','USDT','WBTC','WETH','WBNB'}
+    group_a = {s.replace('/','') for s in symbols_a}
+
+    try:
+        tickers = requests.get(
+            "https://api.binance.com/api/v3/ticker/24hr", timeout=15
+        ).json()
+    except Exception as e:
+        print(f"  [data] get_top_movers ERROR: {e}")
+        return []
+
+    movers = []
+    for t in tickers:
+        sym = t.get('symbol','')
+        if not sym.endswith('USDT'):
+            continue
+        base = sym[:-4]
+        if base in EXCLUDE or sym in group_a:
+            continue
+        try:
+            change = float(t['priceChangePercent'])
+            volume = float(t['quoteVolume'])
+            price  = float(t['lastPrice'])
+        except Exception:
+            continue
+        if abs(change) >= min_change_pct and volume >= min_volume_usd and price > 0:
+            movers.append({
+                'symbol':     base + '/USDT',
+                'change_24h': round(change, 2),
+                'volume_usd': round(volume, 0),
+                'price':      round(price, 6),
+            })
+
+    movers.sort(key=lambda x: abs(x['change_24h']), reverse=True)
+    return movers[:n]
+
+
 def format_market_context(market_data: dict, fng: dict) -> str:
     lines = [
         f"=== CONTEXTO DE MERCADO — {datetime.now().strftime('%Y-%m-%d %H:%M')} ===",

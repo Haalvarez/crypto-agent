@@ -38,6 +38,15 @@ MIN_SIGNAL_CONVICTION = 7      # convicción mínima para ejecutar
 AGENT_API_TOKEN = os.getenv("AGENT_API_TOKEN", "")   # protege /api/close
 PORT            = int(os.getenv("PORT", "8080"))       # Railway lo setea automáticamente
 
+# --- Grupo B — altcoins volátiles (top movers diarios) ---
+GROUP_B_ENABLED        = os.getenv("GROUP_B_ENABLED",       "true").lower() == "true"
+GROUP_B_MAX_POSITIONS  = int(os.getenv("GROUP_B_MAX_POSITIONS",  "1"))
+GROUP_B_TOP_MOVERS     = int(os.getenv("GROUP_B_TOP_MOVERS",     "2"))
+GROUP_B_MIN_CHANGE_PCT = float(os.getenv("GROUP_B_MIN_CHANGE_PCT", "8.0"))
+GROUP_B_MIN_VOLUME_USD = float(os.getenv("GROUP_B_MIN_VOLUME_USD", "50000000"))
+STOP_LOSS_PCT_B        = float(os.getenv("STOP_LOSS_PCT_B",  "0.03"))
+TAKE_PROFIT_PCT_B      = float(os.getenv("TAKE_PROFIT_PCT_B","0.15"))
+
 # --- Intervalos ---
 MONITOR_INTERVAL_MINUTES  = int(os.getenv("MONITOR_INTERVAL_MINUTES",  "15"))   # SL/TP check
 ANALYSIS_INTERVAL_MINUTES = int(os.getenv("ANALYSIS_INTERVAL_MINUTES", "240"))  # régimen + Claude
