@@ -2,6 +2,7 @@
 #  CRYPTO AGENT — MAIN v3 (régimen HMM + monitor posiciones + dashboard)
 # =============================================================
 
+import asyncio
 import json
 import os
 import threading
@@ -575,6 +576,14 @@ def main():
     # antes de marcar el proceso como healthy
     threading.Thread(target=start_api_server, daemon=True, name="api-server").start()
     log.info(f"HTTP server arrancado en puerto {config.PORT}")
+
+    # Motor async (WebSocket + TrailingStop) — hilo separado si ASYNC_ENABLED=true
+    def _run_async_engine():
+        from main_async import run_trailing_engine
+        asyncio.run(run_trailing_engine())
+
+    threading.Thread(target=_run_async_engine, daemon=True, name="trailing-engine").start()
+    log.info("[async] TrailingEngine thread arrancado")
 
     exc.init_db()
     exc.log_event("STARTUP", "Agente iniciado",
