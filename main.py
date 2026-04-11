@@ -482,14 +482,38 @@ def run_cycle():
                 cond = market_data_module.check_entry_conditions(
                     sym, mkt, regimes.get(sym, {})
                 )
+                # Snapshot completo del mercado en el momento de la decisión
+                d = mkt.get(sym, {})
+                snapshot = {
+                    "price":          d.get("price"),
+                    "rsi":            d.get("rsi"),
+                    "ema20":          d.get("ema20"),
+                    "ema50":          d.get("ema50"),
+                    "vol_ratio":      d.get("vol_ratio"),
+                    "change_4h":      d.get("change_4h"),
+                    "change_24h":     d.get("change_24h"),
+                    "trend":          d.get("trend"),
+                    "ema_cross_up":   d.get("ema_cross_up"),
+                    "ema_cross_down": d.get("ema_cross_down"),
+                    "rsi_recovery":   d.get("rsi_recovery"),
+                    "rsi_rejection":  d.get("rsi_rejection"),
+                    "regime":         regimes.get(sym, {}).get("regime"),
+                    "regime_hours":   regimes.get(sym, {}).get("hours_in_regime"),
+                    "fng":            fng.get("value"),
+                    "signal_type":    cond.get("signal_type"),
+                }
+
                 if not cond["qualified"]:
                     log.info(f"  [A] {sym} no califica: {' | '.join(cond['blockers'])}")
-                    exc.log_event("ENTRY_CHECK", f"{sym} — no califica",
+                    exc.log_event("ENTRY_CHECK", f"{sym} — no califica [{cond.get('signal_type','?')}]",
                                   symbol=sym, group="A", level="INFO",
-                                  details={"blockers": cond["blockers"], "reasons": cond["reasons"]})
+                                  details={**snapshot,
+                                           "qualified": False,
+                                           "blockers":  cond["blockers"],
+                                           "reasons":   cond["reasons"]})
                     continue
 
-                log.info(f"  [A] {sym} califica ({cond['direction']}): {' | '.join(cond['reasons'])}")
+                log.info(f"  [A] {sym} califica ({cond['direction']}) [{cond.get('signal_type')}]: {' | '.join(cond['reasons'])}")
 
                 # Paso 2: veto Claude Haiku (barato, rápido)
                 reg_ctx = regime_module.format_regime_context(
@@ -503,30 +527,32 @@ def run_cycle():
                     log.info(f"  [A] {sym} VETADO: {veto['reason']}")
                     exc.log_event("CLAUDE_VETO", f"{sym} vetado — {veto['reason']}",
                                   symbol=sym, group="A", level="WARNING",
-                                  details={"direction": cond["direction"],
-                                           "reason": veto["reason"],
+                                  details={**snapshot,
+                                           "direction": cond["direction"],
+                                           "veto_reason": veto["reason"],
                                            "conditions": cond["reasons"]})
                     continue
 
                 # Paso 3: señal aprobada — armar para ejecución
                 sig = {
-                    "symbol":     sym,
-                    "direction":  cond["direction"],
-                    "conviction": 9,   # calificación mecánica = alta convicción
-                    "actionable": True,
-                    "thesis":     f"Setup mecánico: {', '.join(cond['reasons'])}",
-                    "group":      "A",
-                    "group_name": "A",
+                    "symbol":      sym,
+                    "direction":   cond["direction"],
+                    "conviction":  9,
+                    "actionable":  True,
+                    "thesis":      f"[{cond.get('signal_type')}] {', '.join(cond['reasons'])}",
+                    "group":       "A",
+                    "group_name":  "A",
                     "take_profit": "",
                     "stop_loss":   "",
                 }
                 signals.append(sig)
                 exc.log_event("CLAUDE_SIGNAL",
-                              f"{sym} → {cond['direction']} (mecánico + aprobado)",
+                              f"{sym} → {cond['direction']} [{cond.get('signal_type')}] aprobado",
                               symbol=sym, group="A", level="WARNING",
-                              details={"direction": cond["direction"],
-                                       "conviction": 9,
-                                       "conditions": cond["reasons"],
+                              details={**snapshot,
+                                       "qualified":   True,
+                                       "conviction":  9,
+                                       "conditions":  cond["reasons"],
                                        "veto_reason": veto["reason"]})
 
             except Exception as e:

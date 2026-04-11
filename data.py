@@ -30,26 +30,55 @@ def get_prices_and_indicators(symbols: list[str]) -> dict:
             closes  = pd.Series([float(k[4]) for k in klines])
             volumes = pd.Series([float(k[5]) for k in klines])
 
-            rsi        = _calc_rsi(closes, period=14)
-            ema20      = closes.ewm(span=20).mean().iloc[-1]
-            ema50      = closes.ewm(span=50).mean().iloc[-1]
+            rsi_series = _calc_rsi_series(closes, period=14)
+            rsi        = round(float(rsi_series.iloc[-1]), 1)
+            ema20_s    = closes.ewm(span=20).mean()
+            ema50_s    = closes.ewm(span=50).mean()
+            ema20      = ema20_s.iloc[-1]
+            ema50      = ema50_s.iloc[-1]
             trend      = "ALCISTA" if ema20 > ema50 else "BAJISTA"
             vol_ratio  = round(float(volumes.iloc[-1] / volumes.rolling(20).mean().iloc[-1]), 2)
-
-            # Cambio de la última vela 4h
             change_4h  = round((closes.iloc[-1] - closes.iloc[-2]) / closes.iloc[-2] * 100, 2)
 
+            # ── Señales adicionales ──────────────────────────────
+            # EMA Cross reciente: EMA20 cruzó EMA50 en las últimas 4 velas (no solo alineada)
+            ema_cross_up   = any(
+                ema20_s.iloc[-(i+2)] < ema50_s.iloc[-(i+2)] and
+                ema20_s.iloc[-(i+1)] >= ema50_s.iloc[-(i+1)]
+                for i in range(4)
+            )
+            ema_cross_down = any(
+                ema20_s.iloc[-(i+2)] > ema50_s.iloc[-(i+2)] and
+                ema20_s.iloc[-(i+1)] <= ema50_s.iloc[-(i+1)]
+                for i in range(4)
+            )
+
+            # RSI Recovery: estuvo en oversold (<35) en las últimas 6 velas y ahora salió (>40)
+            rsi_recovery = (
+                any(rsi_series.iloc[-i] < 35 for i in range(1, 7)) and rsi > 40
+            )
+            # RSI Rejection: estuvo en overbought (>65) en las últimas 6 velas y ahora cayó (<60)
+            rsi_rejection = (
+                any(rsi_series.iloc[-i] > 65 for i in range(1, 7)) and rsi < 60
+            )
+
             results[symbol] = {
-                "price":      round(price, 2),
-                "change_24h": round(change_24h, 2),
-                "change_4h":  change_4h,
-                "rsi":        round(rsi, 1),
-                "ema20":      round(ema20, 2),
-                "ema50":      round(ema50, 2),
-                "trend":      trend,
-                "vol_ratio":  vol_ratio,
+                "price":          round(price, 2),
+                "change_24h":     round(change_24h, 2),
+                "change_4h":      change_4h,
+                "rsi":            rsi,
+                "ema20":          round(ema20, 2),
+                "ema50":          round(ema50, 2),
+                "trend":          trend,
+                "vol_ratio":      vol_ratio,
+                "ema_cross_up":   ema_cross_up,
+                "ema_cross_down": ema_cross_down,
+                "rsi_recovery":   rsi_recovery,
+                "rsi_rejection":  rsi_rejection,
             }
-            print(f"  [data] {symbol}: ${price:,.2f} | RSI {rsi:.1f} | {trend} | vol {vol_ratio}x")
+            cross = "🔼EMA" if ema_cross_up else ("🔽EMA" if ema_cross_down else "")
+            recov = "↩RSI" if rsi_recovery else ""
+            print(f"  [data] {symbol}: ${price:,.2f} | RSI {rsi} | {trend} | vol {vol_ratio}x {cross}{recov}")
 
         except Exception as e:
             print(f"  [data] ERROR {symbol}: {e}")
@@ -68,13 +97,16 @@ def get_fear_and_greed() -> dict:
         return {"value": 50, "label": "Neutral"}
 
 
-def _calc_rsi(closes: pd.Series, period: int = 14) -> float:
+def _calc_rsi_series(closes: pd.Series, period: int = 14) -> pd.Series:
     delta = closes.diff()
     gain  = delta.clip(lower=0).rolling(period).mean()
     loss  = (-delta.clip(upper=0)).rolling(period).mean()
     rs    = gain / loss.replace(0, 1e-10)
-    rsi   = 100 - (100 / (1 + rs))
-    return float(rsi.iloc[-1])
+    return 100 - (100 / (1 + rs))
+
+
+def _calc_rsi(closes: pd.Series, period: int = 14) -> float:
+    return float(_calc_rsi_series(closes, period).iloc[-1])
 
 
 def get_prices_and_indicators_for(symbols: list[str]) -> dict:
@@ -147,10 +179,14 @@ def check_entry_conditions(symbol: str, market_data: dict, regime_info: dict) ->
         return {'qualified': False, 'direction': None,
                 'reasons': [], 'blockers': [f'error de datos: {d["error"]}']}
 
-    regime    = regime_info.get('regime')    if regime_info and regime_info.get('available') else None
-    rsi       = float(d.get('rsi',       50.0))
-    trend     = d.get('trend',     '')   # 'ALCISTA' | 'BAJISTA'
-    vol_ratio = float(d.get('vol_ratio', 1.0))
+    regime        = regime_info.get('regime')  if regime_info and regime_info.get('available') else None
+    rsi           = float(d.get('rsi',            50.0))
+    trend         = d.get('trend',         '')
+    vol_ratio     = float(d.get('vol_ratio',       1.0))
+    ema_cross_up  = d.get('ema_cross_up',   False)
+    ema_cross_down= d.get('ema_cross_down', False)
+    rsi_recovery  = d.get('rsi_recovery',   False)
+    rsi_rejection = d.get('rsi_rejection',  False)
 
     # 1. Régimen operable
     if regime == 'BULL_TREND':
@@ -161,44 +197,70 @@ def check_entry_conditions(symbol: str, market_data: dict, regime_info: dict) ->
         reasons.append('régimen BEAR_TREND ✓')
     else:
         blockers.append(f'régimen {regime or "DESCONOCIDO"} — sin tendencia clara')
-        return {'qualified': False, 'direction': None, 'reasons': reasons, 'blockers': blockers}
+        return {'qualified': False, 'direction': None, 'reasons': reasons,
+                'blockers': blockers, 'signal_type': None}
 
-    # 2. EMA alineada con el régimen
+    # 2. Detectar tipo de señal — determina qué tan estrictos somos con el RSI
+    #    EMA_CROSS y RSI_RECOVERY son señales fuertes con evidencia histórica
+    signal_type = None
+    if direction == 'LONG'  and ema_cross_up:
+        signal_type = 'EMA_CROSS'
+        reasons.append('🔼 EMA20 cruzó EMA50 recientemente ✓✓')
+    elif direction == 'SHORT' and ema_cross_down:
+        signal_type = 'EMA_CROSS'
+        reasons.append('🔽 EMA20 cruzó EMA50 recientemente ✓✓')
+    elif direction == 'LONG'  and rsi_recovery:
+        signal_type = 'RSI_RECOVERY'
+        reasons.append('↩ RSI salió de oversold ✓✓')
+    elif direction == 'SHORT' and rsi_rejection:
+        signal_type = 'RSI_REJECTION'
+        reasons.append('↩ RSI salió de overbought ✓✓')
+
+    # 3. EMA alineada (siempre requerida)
     if direction == 'LONG' and trend == 'ALCISTA':
         reasons.append('EMA20 > EMA50 ✓')
     elif direction == 'SHORT' and trend == 'BAJISTA':
         reasons.append('EMA20 < EMA50 ✓')
     else:
-        blockers.append(f'EMA {trend} no alinea con {direction}')
+        # EMA_CROSS no requiere alineación previa — el cruce ES la alineación
+        if signal_type != 'EMA_CROSS':
+            blockers.append(f'EMA {trend} no alinea con {direction}')
 
-    # 3. RSI zona neutral (no entrar sobrecomprado ni sobrevendido)
+    # 4. RSI — rango más amplio si hay señal fuerte
+    rsi_max_long  = 72 if signal_type in ('EMA_CROSS',)        else 65
+    rsi_min_long  = 35 if signal_type in ('RSI_RECOVERY',)     else 42
+    rsi_min_short = 28 if signal_type in ('EMA_CROSS',)        else 35
+    rsi_max_short = 65 if signal_type in ('RSI_REJECTION',)    else 58
+
     if direction == 'LONG':
-        if 42 <= rsi <= 65:
-            reasons.append(f'RSI {rsi:.1f} neutro ✓')
-        elif rsi > 65:
-            blockers.append(f'RSI {rsi:.1f} sobrecomprado — entrada tardía')
+        if rsi_min_long <= rsi <= rsi_max_long:
+            reasons.append(f'RSI {rsi:.1f} ✓')
+        elif rsi > rsi_max_long:
+            blockers.append(f'RSI {rsi:.1f} sobrecomprado')
         else:
-            blockers.append(f'RSI {rsi:.1f} débil para LONG en tendencia')
+            blockers.append(f'RSI {rsi:.1f} débil para LONG')
     else:
-        if 35 <= rsi <= 58:
-            reasons.append(f'RSI {rsi:.1f} neutro ✓')
-        elif rsi < 35:
-            blockers.append(f'RSI {rsi:.1f} sobrevendido — no SHORT aquí')
+        if rsi_min_short <= rsi <= rsi_max_short:
+            reasons.append(f'RSI {rsi:.1f} ✓')
+        elif rsi < rsi_min_short:
+            blockers.append(f'RSI {rsi:.1f} sobrevendido')
         else:
             blockers.append(f'RSI {rsi:.1f} alto para SHORT')
 
-    # 4. Volumen
-    if vol_ratio >= 1.3:
+    # 5. Volumen — más estricto sin señal fuerte
+    vol_min = 1.2 if signal_type else 1.3
+    if vol_ratio >= vol_min:
         reasons.append(f'volumen {vol_ratio:.1f}x ✓')
     else:
-        blockers.append(f'volumen {vol_ratio:.1f}x bajo (mín 1.3×)')
+        blockers.append(f'volumen {vol_ratio:.1f}x bajo (mín {vol_min}×)')
 
     qualified = len(blockers) == 0
     return {
-        'qualified': qualified,
-        'direction': direction if qualified else None,
-        'reasons':   reasons,
-        'blockers':  blockers,
+        'qualified':   qualified,
+        'direction':   direction if qualified else None,
+        'signal_type': signal_type or 'ALIGNMENT',
+        'reasons':     reasons,
+        'blockers':    blockers,
     }
 
 
