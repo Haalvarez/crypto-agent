@@ -261,9 +261,41 @@ def parse_price(value: str) -> float:
 
 # ── Ejecución principal ───────────────────────────────────────
 
+def _calc_sl_tp(symbol: str, direction: str, entry: float,
+                stop_pct: float, take_profit_signal: float) -> tuple[float, float]:
+    """
+    Calcula SL basado en ATR(14) 1h. Fallback a porcentaje fijo si ATR falla.
+    TP: usa el sugerido por Claude si es válido; si no, 2× el riesgo ATR (R:R 1:2).
+    """
+    from strategies.trailing_stop import _calc_atr_sync, ATR_MULT
+
+    atr = _calc_atr_sync(symbol, period=14)
+    if atr and atr > 0:
+        if direction == 'LONG':
+            sl = entry - atr * ATR_MULT
+            tp = take_profit_signal if take_profit_signal > entry else entry + atr * ATR_MULT * 2
+        else:
+            sl = entry + atr * ATR_MULT
+            tp = take_profit_signal if 0 < take_profit_signal < entry else entry - atr * ATR_MULT * 2
+        print(f"  [executor] ATR={atr:.4f} → SL={sl:.4f} TP={tp:.4f}")
+    else:
+        # Fallback a porcentaje fijo
+        pct = stop_pct or 0.04
+        if direction == 'LONG':
+            sl = entry * (1 - pct)
+            tp = take_profit_signal if take_profit_signal > entry else entry * (1 + pct * 2)
+        else:
+            sl = entry * (1 + pct)
+            tp = take_profit_signal if 0 < take_profit_signal < entry else entry * (1 - pct * 2)
+        print(f"  [executor] ATR no disponible — usando pct={pct:.1%} → SL={sl:.4f} TP={tp:.4f}")
+
+    return round(sl, 8), round(tp, 8)
+
+
 def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> dict | None:
     """
     Ejecuta una señal accionable en Binance.
+    SL calculado con ATR(14) 1h (fallback a % fijo si ATR no disponible).
     Retorna dict con resultado o None si no se ejecutó.
     """
     init_db()
@@ -285,13 +317,8 @@ def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> d
     # Calcular cantidad a comprar (máximo MAX_TRADE_USD)
     quantity_raw = MAX_TRADE_USD / current_price
 
-    # Parsear stop y target desde la señal
-    stop_loss   = parse_price(signal.get('stop_loss', ''))
-    take_profit = parse_price(signal.get('take_profit', ''))
-
-    if not stop_loss or not take_profit:
-        print(f"  [executor] Stop o target inválido para {symbol} — abortando")
-        return None
+    # TP sugerido por Claude (referencia; puede ser reemplazado por ATR)
+    take_profit_signal = parse_price(signal.get('take_profit', ''))
 
     try:
         exchange = get_exchange()
@@ -316,6 +343,11 @@ def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> d
         entry_price = float(order.get('average') or order.get('price') or current_price)
         order_id    = str(order['id'])
         usd_value   = float(quantity) * entry_price
+
+        # SL/TP basado en ATR (se calcula con el entry_price real de la orden)
+        stop_loss, take_profit = _calc_sl_tp(
+            symbol, direction, entry_price, stop_pct, take_profit_signal
+        )
 
         # Guardar en DB
         trade_data = {
