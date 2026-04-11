@@ -28,7 +28,7 @@ GITHUB_GIST_ID    = os.getenv("GITHUB_GIST_ID", "")
 SYMBOLS = ["ETH/USDT", "SOL/USDT", "BTC/USDT", "AVAX/USDT"]
 
 # --- Reglas de riesgo (hardcoded, el agente no las puede cambiar) ---
-MAX_TRADE_USD         = 10     # máximo por operación en USD
+MAX_TRADE_USD         = float(os.getenv("MAX_TRADE_USD", "50"))   # máximo por operación en USD
 STOP_LOSS_PCT         = 0.04   # 4%
 MAX_DAILY_LOSS_USD    = 15     # pérdida diaria máxima antes de detenerse
 MAX_OPEN_POSITIONS    = 2      # máximo de posiciones abiertas simultáneas

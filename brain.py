@@ -3,6 +3,7 @@
 #  Llama a Claude con el contexto de mercado y parsea la señal
 # =============================================================
 
+import json
 import re
 import anthropic
 from config import ANTHROPIC_API_KEY, MIN_SIGNAL_CONVICTION
@@ -77,6 +78,66 @@ REGLAS ABSOLUTAS:
 - RSI < 28 → NEUTRAL obligatorio
 - Ratio mínimo 4:1 — si no se puede construir, NEUTRAL
 - Respondé siempre en español, sé directo"""
+
+
+SYSTEM_PROMPT_VETO = """Sos el risk manager de un sistema de trading algorítmico.
+El sistema ya validó una entrada técnica mecánicamente. Tu único trabajo es detectar razones OBJETIVAS para no ejecutar.
+
+VETÁ solo si detectás algo concreto:
+- Evento macroeconómico inminente conocido (FOMC, CPI, halving, hard fork en las próximas horas)
+- Divergencia RSI obvia (precio en nuevo máximo, RSI más bajo que el anterior)
+- BTC en caída libre simultánea mientras el activo es altcoin
+- Sobreextensión técnica extrema (>3 velas consecutivas de >5% sin retroceso)
+
+NO vetés por: incertidumbre general, "podría bajar", falta de datos, volatilidad normal.
+En caso de duda, NO vetés — la señal técnica ya fue validada.
+
+Respondé ÚNICAMENTE con JSON válido, sin texto adicional:
+{"veto": false, "reason": ""}
+{"veto": true, "reason": "razón concreta en 1 línea"}"""
+
+
+def analyze_veto(symbol: str, direction: str, conditions: dict,
+                 market_data: dict, regime_context: str = "") -> dict:
+    """
+    Claude como veto de última instancia sobre una entrada ya calificada mecánicamente.
+    Usa claude-haiku (más barato y rápido — la tarea es simple).
+    Retorna: {veto: bool, reason: str, tokens: int}
+    """
+    d = market_data.get(symbol, {})
+    context = (
+        f"Setup validado mecánicamente:\n"
+        f"  Activo:     {symbol}\n"
+        f"  Dirección:  {direction}\n"
+        f"  Condiciones:{', '.join(conditions.get('reasons', []))}\n"
+        f"  Precio:     ${d.get('price', 0):,.4f}\n"
+        f"  RSI:        {d.get('rsi', 0):.1f}\n"
+        f"  Cambio 24h: {d.get('change_24h', 0):+.2f}%\n"
+        f"  Volumen:    {d.get('vol_ratio', 0):.2f}x promedio\n"
+    )
+    if regime_context:
+        context += f"\nContexto de régimen:\n{regime_context}"
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-20250514",
+            max_tokens=150,
+            system=SYSTEM_PROMPT_VETO,
+            messages=[{"role": "user", "content": context}]
+        )
+        raw    = response.content[0].text.strip()
+        tokens = response.usage.input_tokens + response.usage.output_tokens
+        parsed = json.loads(raw)
+        return {
+            "veto":   bool(parsed.get("veto", False)),
+            "reason": parsed.get("reason", ""),
+            "tokens": tokens,
+        }
+    except json.JSONDecodeError:
+        # Si no parsea el JSON, aprobamos — la señal técnica ya fue validada
+        return {"veto": False, "reason": "parse error — señal aprobada por default", "tokens": 0}
+    except Exception as e:
+        return {"veto": False, "reason": f"error Claude: {e}", "tokens": 0}
 
 
 def analyze_group_b(market_context: str) -> dict:

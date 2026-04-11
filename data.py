@@ -127,6 +127,81 @@ def get_top_movers(symbols_a: list[str], n: int = 2,
     return movers[:n]
 
 
+def check_entry_conditions(symbol: str, market_data: dict, regime_info: dict) -> dict:
+    """
+    Filtro mecánico de entrada para Grupo A. Todas las condiciones deben cumplirse.
+
+    Condiciones:
+      1. Régimen HMM en BULL_TREND (→ LONG) o BEAR_TREND (→ SHORT)
+      2. EMA20/EMA50 alineada con el régimen
+      3. RSI en zona neutral — no sobrecomprado ni sobrevendido en la entrada
+      4. Volumen ≥ 1.3× promedio 20 períodos (confirma que hay participación)
+
+    Retorna: {qualified, direction, reasons, blockers}
+    """
+    blockers: list[str] = []
+    reasons:  list[str] = []
+
+    d = market_data.get(symbol, {})
+    if d.get('error'):
+        return {'qualified': False, 'direction': None,
+                'reasons': [], 'blockers': [f'error de datos: {d["error"]}']}
+
+    regime    = regime_info.get('regime')    if regime_info and regime_info.get('available') else None
+    rsi       = float(d.get('rsi',       50.0))
+    trend     = d.get('trend',     '')   # 'ALCISTA' | 'BAJISTA'
+    vol_ratio = float(d.get('vol_ratio', 1.0))
+
+    # 1. Régimen operable
+    if regime == 'BULL_TREND':
+        direction = 'LONG'
+        reasons.append('régimen BULL_TREND ✓')
+    elif regime == 'BEAR_TREND':
+        direction = 'SHORT'
+        reasons.append('régimen BEAR_TREND ✓')
+    else:
+        blockers.append(f'régimen {regime or "DESCONOCIDO"} — sin tendencia clara')
+        return {'qualified': False, 'direction': None, 'reasons': reasons, 'blockers': blockers}
+
+    # 2. EMA alineada con el régimen
+    if direction == 'LONG' and trend == 'ALCISTA':
+        reasons.append('EMA20 > EMA50 ✓')
+    elif direction == 'SHORT' and trend == 'BAJISTA':
+        reasons.append('EMA20 < EMA50 ✓')
+    else:
+        blockers.append(f'EMA {trend} no alinea con {direction}')
+
+    # 3. RSI zona neutral (no entrar sobrecomprado ni sobrevendido)
+    if direction == 'LONG':
+        if 42 <= rsi <= 65:
+            reasons.append(f'RSI {rsi:.1f} neutro ✓')
+        elif rsi > 65:
+            blockers.append(f'RSI {rsi:.1f} sobrecomprado — entrada tardía')
+        else:
+            blockers.append(f'RSI {rsi:.1f} débil para LONG en tendencia')
+    else:
+        if 35 <= rsi <= 58:
+            reasons.append(f'RSI {rsi:.1f} neutro ✓')
+        elif rsi < 35:
+            blockers.append(f'RSI {rsi:.1f} sobrevendido — no SHORT aquí')
+        else:
+            blockers.append(f'RSI {rsi:.1f} alto para SHORT')
+
+    # 4. Volumen
+    if vol_ratio >= 1.3:
+        reasons.append(f'volumen {vol_ratio:.1f}x ✓')
+    else:
+        blockers.append(f'volumen {vol_ratio:.1f}x bajo (mín 1.3×)')
+
+    qualified = len(blockers) == 0
+    return {
+        'qualified': qualified,
+        'direction': direction if qualified else None,
+        'reasons':   reasons,
+        'blockers':  blockers,
+    }
+
+
 def format_market_context(market_data: dict, fng: dict) -> str:
     lines = [
         f"=== CONTEXTO DE MERCADO — {datetime.now().strftime('%Y-%m-%d %H:%M')} ===",

@@ -467,40 +467,71 @@ def run_cycle():
     signals = []
     tokens  = 0
 
-    # 6a. Análisis Claude Grupo A — pares libres con análisis vencido
-    free_a   = [s for s in config.SYMBOLS if not exc.has_open_position(s)]
-    due_a    = [s for s in free_a if needs_analysis(s)]
-    blocked  = [s for s in config.SYMBOLS if exc.has_open_position(s)]
+    # 6a. Análisis Grupo A — filtro mecánico + veto Claude (Haiku)
+    free_a  = [s for s in config.SYMBOLS if not exc.has_open_position(s)]
+    due_a   = [s for s in free_a if needs_analysis(s)]
+    blocked = [s for s in config.SYMBOLS if exc.has_open_position(s)]
     if blocked:
-        log.info(f"  Skip Claude (posición abierta): {', '.join(blocked)}")
+        log.info(f"  Skip análisis (posición abierta): {', '.join(blocked)}")
 
     if due_a and not state["halted"]:
-        try:
-            due_mkt    = {s: mkt[s] for s in due_a if s in mkt}
-            due_ctx    = market_data_module.format_market_context(due_mkt, fng)
-            due_regime = regime_module.format_regime_context(
-                {s: regimes[s] for s in due_a if s in regimes}
-            )
-            result  = brain.analyze(due_ctx, due_regime)
-            signals = result["signals"]
-            tokens += result["input_tokens"] + result["output_tokens"]
-            log.info(f"Claude A OK — {len(signals)} señales — {tokens} tokens")
-            for s in due_a:
-                state["last_analysis"][s] = datetime.now()
-            state["analysis_cycles"] += 1
-            # Loguear señales
-            for sig in signals:
-                lvl = "INFO" if not sig.get("actionable") else "WARNING"
+        for sym in due_a:
+            state["last_analysis"][sym] = datetime.now()
+            try:
+                # Paso 1: filtro mecánico (sin llamada a API)
+                cond = market_data_module.check_entry_conditions(
+                    sym, mkt, regimes.get(sym, {})
+                )
+                if not cond["qualified"]:
+                    log.info(f"  [A] {sym} no califica: {' | '.join(cond['blockers'])}")
+                    exc.log_event("ENTRY_CHECK", f"{sym} — no califica",
+                                  symbol=sym, group="A", level="INFO",
+                                  details={"blockers": cond["blockers"], "reasons": cond["reasons"]})
+                    continue
+
+                log.info(f"  [A] {sym} califica ({cond['direction']}): {' | '.join(cond['reasons'])}")
+
+                # Paso 2: veto Claude Haiku (barato, rápido)
+                reg_ctx = regime_module.format_regime_context(
+                    {sym: regimes[sym]} if sym in regimes else {}
+                )
+                veto = brain.analyze_veto(sym, cond["direction"], cond, mkt, reg_ctx)
+                tokens += veto["tokens"]
+                state["analysis_cycles"] += 1
+
+                if veto["veto"]:
+                    log.info(f"  [A] {sym} VETADO: {veto['reason']}")
+                    exc.log_event("CLAUDE_VETO", f"{sym} vetado — {veto['reason']}",
+                                  symbol=sym, group="A", level="WARNING",
+                                  details={"direction": cond["direction"],
+                                           "reason": veto["reason"],
+                                           "conditions": cond["reasons"]})
+                    continue
+
+                # Paso 3: señal aprobada — armar para ejecución
+                sig = {
+                    "symbol":     sym,
+                    "direction":  cond["direction"],
+                    "conviction": 9,   # calificación mecánica = alta convicción
+                    "actionable": True,
+                    "thesis":     f"Setup mecánico: {', '.join(cond['reasons'])}",
+                    "group":      "A",
+                    "group_name": "A",
+                    "take_profit": "",
+                    "stop_loss":   "",
+                }
+                signals.append(sig)
                 exc.log_event("CLAUDE_SIGNAL",
-                              f"{sig['symbol']} → {sig['direction']} (conv {sig.get('conviction',0)}/10)",
-                              symbol=sig["symbol"], group="A", level=lvl,
-                              details={"direction": sig["direction"],
-                                       "conviction": sig.get("conviction"),
-                                       "actionable": sig.get("actionable"),
-                                       "thesis": sig.get("thesis","")})
-        except Exception as e:
-            log.error(f"Error brain A: {e}")
-            tg.send_error("análisis Claude A", str(e))
+                              f"{sym} → {cond['direction']} (mecánico + aprobado)",
+                              symbol=sym, group="A", level="WARNING",
+                              details={"direction": cond["direction"],
+                                       "conviction": 9,
+                                       "conditions": cond["reasons"],
+                                       "veto_reason": veto["reason"]})
+
+            except Exception as e:
+                log.error(f"Error análisis A {sym}: {e}")
+                tg.send_error(f"análisis A {sym}", str(e))
 
     # 6b. Análisis Claude Grupo B — movers sin posición abierta
     if group_b_symbols and not state["halted"]:
@@ -533,8 +564,22 @@ def run_cycle():
                 log.error(f"Error brain B: {e}")
 
     # 7. Ejecutar señales accionables
+    fng_value = fng.get("value", 50)
     for signal in signals:
         if signal.get("actionable") and not state["halted"]:
+            # Filtro Fear & Greed: no abrir LONG en Extreme Greed ni SHORT en Extreme Fear
+            if signal["direction"] == "LONG" and fng_value > 80:
+                log.info(f"  Skip {signal['symbol']} LONG — F&G {fng_value} (Extreme Greed)")
+                exc.log_event("ENTRY_CHECK", f"{signal['symbol']} bloqueado — F&G {fng_value} Extreme Greed",
+                              symbol=signal["symbol"], level="WARNING",
+                              details={"fng": fng_value, "direction": "LONG"})
+                continue
+            if signal["direction"] == "SHORT" and fng_value < 20:
+                log.info(f"  Skip {signal['symbol']} SHORT — F&G {fng_value} (Extreme Fear)")
+                exc.log_event("ENTRY_CHECK", f"{signal['symbol']} bloqueado — F&G {fng_value} Extreme Fear",
+                              symbol=signal["symbol"], level="WARNING",
+                              details={"fng": fng_value, "direction": "SHORT"})
+                continue
             is_b     = signal.get("group") == "B"
             stop_pct = config.STOP_LOSS_PCT_B   if is_b else config.STOP_LOSS_PCT
             log.info(f"Ejecutando: {signal['symbol']} {signal['direction']} (Grupo {'B' if is_b else 'A'})")
