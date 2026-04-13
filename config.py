@@ -25,14 +25,14 @@ GITHUB_GIST_TOKEN = os.getenv("GITHUB_GIST_TOKEN", "")
 GITHUB_GIST_ID    = os.getenv("GITHUB_GIST_ID", "")
 
 # --- Pares que el agente monitorea ---
-SYMBOLS = ["ETH/USDT", "SOL/USDT", "BTC/USDT", "AVAX/USDT"]
+SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 
 # --- Reglas de riesgo (hardcoded, el agente no las puede cambiar) ---
-MAX_TRADE_USD         = float(os.getenv("MAX_TRADE_USD", "50"))   # máximo por operación en USD
-STOP_LOSS_PCT         = 0.04   # 4%
-MAX_DAILY_LOSS_USD    = 15     # pérdida diaria máxima antes de detenerse
-MAX_OPEN_POSITIONS    = 2      # máximo de posiciones abiertas simultáneas
-MIN_SIGNAL_CONVICTION = 8      # convicción mínima para ejecutar
+MAX_TRADE_USD         = float(os.getenv("MAX_TRADE_USD",      "50"))  # por operación en USD
+STOP_LOSS_PCT         = 0.04                                           # 4% fallback si ATR falla
+MAX_DAILY_LOSS_USD    = float(os.getenv("MAX_DAILY_LOSS_USD", "30"))  # ~3 pérdidas ATR × $50
+MAX_OPEN_POSITIONS    = 2                                              # máx posiciones simultáneas
+MIN_SIGNAL_CONVICTION = 8                                              # convicción mínima Claude
 
 # --- API interna ---
 AGENT_API_TOKEN = os.getenv("AGENT_API_TOKEN", "")   # protege /api/close
