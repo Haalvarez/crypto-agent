@@ -7,7 +7,7 @@ import json
 import os
 import sqlite3
 import ccxt
-from datetime import datetime
+from datetime import datetime, timezone
 from config import (
     BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET,
     MAX_TRADE_USD, MAX_OPEN_POSITIONS
@@ -87,7 +87,7 @@ def log_event(type: str, title: str, symbol: str = None, group: str = None,
         conn.execute(
             """INSERT INTO events (timestamp, type, symbol, group_name, level, title, details)
                VALUES (?,?,?,?,?,?,?)""",
-            (datetime.now().isoformat(), type, symbol, group, level, title,
+            (datetime.now(timezone.utc).isoformat(), type, symbol, group, level, title,
              json.dumps(details, default=str) if details else None)
         )
         conn.commit()

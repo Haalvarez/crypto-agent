@@ -633,7 +633,7 @@ def run_cycle():
     write_dashboard_state(mkt, fng, regimes, signals, balance)
 
     # 10. Resumen Telegram
-    if state["analysis_cycles"] % 3 == 0 and signals or closed_trades:
+    if state["analysis_cycles"] % 3 == 0 and (signals or closed_trades):
         tg.send_cycle_summary(signals, fng, tokens, balance, regimes)
 
     state["cycles_run"] += 1

@@ -24,6 +24,8 @@ def send(text: str, silent: bool = False) -> bool:
             },
             timeout=10,
         )
+        if r.status_code != 200:
+            print(f"[Telegram FAIL] status={r.status_code} body={r.text[:300]}")
         return r.status_code == 200
     except Exception as e:
         print(f"[Telegram ERROR] {e}")
