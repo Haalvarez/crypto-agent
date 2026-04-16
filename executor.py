@@ -468,7 +468,9 @@ def get_all_trades_stats() -> dict:
     """Retorna estadísticas globales de todos los trades."""
     conn  = sqlite3.connect(DB_PATH)
     rows  = conn.execute("SELECT status, pnl_usd FROM trades").fetchall()
-    open_ = conn.execute("SELECT id, symbol, direction, entry_price, stop_loss, take_profit, opened_at FROM trades WHERE status='OPEN'").fetchall()
+    open_ = conn.execute(
+        "SELECT id, symbol, direction, entry_price, stop_loss, take_profit, opened_at, usd_value, quantity FROM trades WHERE status='OPEN'"
+    ).fetchall()
     conn.close()
 
     wins   = [r for r in rows if r[0] == 'WIN']
@@ -486,7 +488,7 @@ def get_all_trades_stats() -> dict:
             {
                 "id":          t[0], "symbol": t[1], "direction": t[2],
                 "entry_price": t[3], "stop_loss": t[4], "take_profit": t[5],
-                "opened_at":   t[6],
+                "opened_at":   t[6], "usd_value": t[7], "quantity": t[8],
             }
             for t in open_
         ],

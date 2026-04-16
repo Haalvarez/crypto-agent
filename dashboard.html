@@ -652,12 +652,17 @@ function renderPositions(positions) {
   for (const p of positions) {
     const dirCls   = p.direction === 'LONG' ? 'pos-long' : 'pos-short';
     const dirIcon  = p.direction === 'LONG' ? '📈' : '📉';
-    const pnl      = p.pnl_pct || 0;
-    const pnlCls   = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-    const pnlSign  = pnl >= 0 ? '+' : '';
+    const pnlPct   = p.pnl_pct || 0;
+    const pnlUsd   = p.pnl_usd ?? null;
+    const pnlCls   = pnlPct >= 0 ? 'pnl-pos' : 'pnl-neg';
+    const pnlSign  = pnlPct >= 0 ? '+' : '';
     const opened   = p.opened_at ? toAR(p.opened_at) : '—';
     const curPrice = p.current_price
       ? `$${p.current_price.toLocaleString('en-US',{maximumFractionDigits:2})}` : '—';
+    const usdVal   = p.usd_value
+      ? `$${p.usd_value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—';
+    const pnlUsdStr = pnlUsd !== null
+      ? `${pnlSign}$${Math.abs(pnlUsd).toFixed(2)}` : '—';
 
     html += `
     <div class="position-card">
@@ -675,16 +680,24 @@ function renderPositions(positions) {
           <div class="pos-lbl">Precio actual</div>
         </div>
         <div class="pos-item">
-          <div class="pos-val ${pnlCls}">${pnlSign}${pnl}%</div>
-          <div class="pos-lbl" onclick="showTip('PnL flotante','Ganancia o pérdida no realizada en porcentaje desde la entrada. Se actualiza cada 15 minutos.')">PnL flotante ⓘ</div>
+          <div class="pos-val">${usdVal}</div>
+          <div class="pos-lbl" onclick="showTip('Valor compra','Monto en USD invertido en esta posición al momento de la apertura.')">Valor compra ⓘ</div>
+        </div>
+        <div class="pos-item">
+          <div class="pos-val ${pnlCls}">${pnlSign}${pnlPct}%</div>
+          <div class="pos-lbl" onclick="showTip('PnL %','Ganancia o pérdida no realizada en porcentaje desde la entrada.')">PnL % ⓘ</div>
+        </div>
+        <div class="pos-item">
+          <div class="pos-val ${pnlCls}">${pnlUsdStr}</div>
+          <div class="pos-lbl" onclick="showTip('PnL USD','Ganancia o pérdida no realizada en dólares. Actualizado cada 15 min.')">PnL USD ⓘ</div>
         </div>
         <div class="pos-item">
           <div class="pos-val" style="color:var(--red)">$${p.stop_loss?.toLocaleString('en-US',{maximumFractionDigits:2})||'—'}</div>
-          <div class="pos-lbl" onclick="showTip('Stop Loss','Precio donde el agente cierra automáticamente la posición para limitar la pérdida. Fijo en 4% desde la entrada.')">Stop Loss ⓘ</div>
+          <div class="pos-lbl" onclick="showTip('Stop Loss','Precio de cierre automático para limitar pérdida. Calculado con ATR(14).')">Stop Loss ⓘ</div>
         </div>
         <div class="pos-item">
           <div class="pos-val" style="color:var(--green)">$${p.take_profit?.toLocaleString('en-US',{maximumFractionDigits:2})||'—'}</div>
-          <div class="pos-lbl" onclick="showTip('Take Profit','Precio objetivo donde el agente cierra la posición con ganancia. Fijo en 8% desde la entrada (ratio 1:2 respecto al stop).')">Take Profit ⓘ</div>
+          <div class="pos-lbl" onclick="showTip('Take Profit','Precio objetivo de cierre con ganancia. R:R mínimo 1:2 sobre el stop ATR.')">Take Profit ⓘ</div>
         </div>
         <div class="pos-item">
           <div class="pos-val">#${p.id}</div>
@@ -692,7 +705,7 @@ function renderPositions(positions) {
         </div>
       </div>
       <div class="pos-opened">Abierta: ${opened} (AR)</div>
-      <button class="close-btn" onclick="askClose(${p.id}, '${p.symbol}', '${p.direction}', ${pnl}, '${pnlSign}')">
+      <button class="close-btn" onclick="askClose(${p.id}, '${p.symbol}', '${p.direction}', ${pnlPct}, '${pnlSign}')">
         🛑 Cerrar posición al mercado
       </button>
     </div>`;

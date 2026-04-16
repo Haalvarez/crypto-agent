@@ -220,11 +220,14 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
         if price and t["entry_price"]:
             if t["direction"] == "LONG":
                 t["pnl_pct"] = round((price - t["entry_price"]) / t["entry_price"] * 100, 2)
+                t["pnl_usd"] = round((price - t["entry_price"]) * (t.get("quantity") or 0), 2)
             else:
                 t["pnl_pct"] = round((t["entry_price"] - price) / t["entry_price"] * 100, 2)
+                t["pnl_usd"] = round((t["entry_price"] - price) * (t.get("quantity") or 0), 2)
             t["current_price"] = price
         else:
             t["pnl_pct"] = 0
+            t["pnl_usd"] = 0
 
     payload = {
         "last_update":        datetime.now().isoformat(),
