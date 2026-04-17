@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#080b14">
-<title>Crypto Agent ó Arquitectura</title>
+<title>Crypto Agent ‚Äî Arquitectura</title>
 <style>
   :root{--bg:#080b14;--surface:#0f1424;--surface2:#161b2e;--border:#1e2640;--blue:#3b82f6;--purple:#8b5cf6;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--cyan:#06b6d4;--text:#e2e8f0;--muted:#64748b;--dim:#94a3b8}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -75,17 +75,17 @@
   <a class="nav-link active" href="system_explainer.html">?? Arquitectura</a>
 </div>
 <div class="hero">
-  <h1>Crypto<span>Agent</span> ó Arquitectura</h1>
-  <p>Flujo de datos, ·rboles de decisiÛn, reglas de riesgo y componentes del sistema de trading autÛnomo.</p>
+  <h1>Crypto<span>Agent</span> ‚Äî Arquitectura</h1>
+  <p>Flujo de datos, √°rboles de decisi√≥n, reglas de riesgo y componentes del sistema de trading aut√≥nomo.</p>
 </div>
 <main>
 
-<div class="sh">Flujo de datos ó Pipeline principal</div>
+<div class="sh">Flujo de datos ‚Äî Pipeline principal</div>
 <div class="pl">
   <div class="pn"><div class="pi">??</div><div class="pp">Binance API</div></div><div class="pa">?</div>
   <div class="pn"><div class="pi">??</div><div class="pp">data.py</div></div><div class="pa">?</div>
   <div class="pn"><div class="pi">??</div><div class="pp">regime.py<br>HMM</div></div><div class="pa">?</div>
-  <div class="pn"><div class="pi">??</div><div class="pp">Filtro<br>mec·nico</div></div><div class="pa">?</div>
+  <div class="pn"><div class="pi">??</div><div class="pp">Filtro<br>mec√°nico</div></div><div class="pa">?</div>
   <div class="pn"><div class="pi">??</div><div class="pp">Claude<br>Haiku veto</div></div><div class="pa">?</div>
   <div class="pn"><div class="pi">?</div><div class="pp">executor.py</div></div><div class="pa">?</div>
   <div class="pn"><div class="pi">??</div><div class="pp">Binance<br>Exchange</div></div><div class="pa">?</div>
@@ -93,82 +93,82 @@
 </div>
 <div class="hb">
   <b>Dos hilos en paralelo:</b><br>
-  ?? <b>Hilo principal</b> (main.py): ciclo cada 15 min ó monitoreo SL/TP + an·lisis cada 4h<br>
-  ? <b>Hilo async</b> (main_async.py): WebSocket tiempo real ó trailing stop ATR din·mico
+  ?? <b>Hilo principal</b> (main.py): ciclo cada 15 min ‚Äî monitoreo SL/TP + an√°lisis cada 4h<br>
+  ? <b>Hilo async</b> (main_async.py): WebSocket tiempo real ‚Äî trailing stop ATR din√°mico
 </div>
 
 <div class="sh">Arranque del sistema</div>
 <div class="ts"><div class="tnum" style="border-color:var(--blue);color:var(--blue)">1</div><div class="tc"><div class="tt" style="color:var(--blue)">Iniciar servidor HTTP</div><div class="tf">main.py ? start_api_server()</div><div class="td">Puerto 8080. Dashboard, timeline, API REST. Railway health check.</div></div></div>
 <div class="ts"><div class="tnum" style="border-color:var(--cyan);color:var(--cyan)">2</div><div class="tc"><div class="tt" style="color:var(--cyan)">Motor async (TrailingEngine)</div><div class="tf">main_async.py ? TrailingEngine.start()</div><div class="td">Hilo daemon: WebSocket Binance, carga posiciones, restaura trailing stops.</div></div></div>
 <div class="ts"><div class="tnum" style="border-color:var(--purple);color:var(--purple)">3</div><div class="tc"><div class="tt" style="color:var(--purple)">Inicializar DB + STARTUP</div><div class="tf">executor.py ? init_db() + log_event()</div><div class="td">Tablas trades + events. Migra esquema. Evento STARTUP.</div></div></div>
-<div class="ts"><div class="tnum" style="border-color:var(--amber);color:var(--amber)">4</div><div class="tc"><div class="tt" style="color:var(--amber)">Telegram startup</div><div class="tf">telegram_alerts.py ? send_startup()</div><div class="td">Confirma pares, intervalo monitoreo (15 min) y an·lisis (4h).</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--amber);color:var(--amber)">4</div><div class="tc"><div class="tt" style="color:var(--amber)">Telegram startup</div><div class="tf">telegram_alerts.py ? send_startup()</div><div class="td">Confirma pares, intervalo monitoreo (15 min) y an√°lisis (4h).</div></div></div>
 <div class="ts"><div class="tnum" style="border-color:var(--green);color:var(--green)">5</div><div class="tc"><div class="tt" style="color:var(--green)">Loop principal</div><div class="tf">main.py ? while True: run_cycle()</div><div class="td">run_cycle() cada 15 min. Si halted ? espera 1h.</div></div></div>
 
-<div class="sh">Cada ciclo de monitoreo ó 10 pasos (cada 15 min)</div>
-<div class="ts"><div class="tnum" style="border-color:var(--blue);color:var(--blue)">1</div><div class="tc"><div class="tt">Scan Grupo B <span style="color:var(--muted);font-weight:400">(1◊/dÌa)</span></div><div class="td">Top 2 movers USDT con |cambio 24h| > 5% y > $50M vol. Evento MOVER_DETECTED.</div></div></div>
+<div class="sh">Cada ciclo de monitoreo ‚Äî 10 pasos (cada 15 min)</div>
+<div class="ts"><div class="tnum" style="border-color:var(--blue);color:var(--blue)">1</div><div class="tc"><div class="tt">Scan Grupo B <span style="color:var(--muted);font-weight:400">(1√ó/d√≠a)</span></div><div class="td">Top 2 movers USDT con |cambio 24h| > 5% y > $50M vol. Evento MOVER_DETECTED.</div></div></div>
 <div class="ts"><div class="tnum" style="border-color:var(--blue);color:var(--blue)">2</div><div class="tc"><div class="tt">Datos de mercado</div><div class="td">100 velas 4h ? RSI(14), EMA20/50, vol_ratio, EMA cross, RSI recovery/rejection. F&G Index.</div></div></div>
 <div class="ts"><div class="tnum" style="border-color:var(--red);color:var(--red)">3</div><div class="tc"><div class="tt">Monitor posiciones abiertas</div><div class="td">SL/TP check. LOSS ? acumulador diario. Si > $30 ? DAILY HALT. Evento TRADE_CLOSE.</div></div></div>
-<div class="ts"><div class="tnum" style="border-color:var(--purple);color:var(--purple)">4</div><div class="tc"><div class="tt">RÈgimen HMM</div><div class="td">Modelo HMM + 200 velas 4h + 5 features + Viterbi ? estado actual. Evento REGIME_CHANGE si cambiÛ.</div></div></div>
-<div class="ts"><div class="tnum" style="border-color:var(--red);color:var(--red)">5</div><div class="tc"><div class="tt">Salida por rÈgimen</div><div class="td">LONG + BEAR ? cierre. SHORT + BULL ? cierre. Evento REGIME_EXIT.</div></div></div>
-<div class="ts"><div class="tnum" style="border-color:var(--green);color:var(--green)">6</div><div class="tc"><div class="tt">An·lisis Grupo A <span style="color:var(--muted);font-weight:400">(cada 4h)</span></div><div class="td">Si no tiene posiciÛn Y pasaron ?4h. Filtro mec·nico ? Veto Haiku ? EjecuciÛn.</div></div></div>
-<div class="ts"><div class="tnum" style="border-color:var(--cyan);color:var(--cyan)">7</div><div class="tc"><div class="tt">An·lisis Grupo B</div><div class="td">Claude Sonnet momentum. Stop 3%, target 15%. M·x 1 posiciÛn B.</div></div></div>
-<div class="ts"><div class="tnum" style="border-color:var(--green);color:var(--green)">8</div><div class="tc"><div class="tt">Ejecutar seÒales</div><div class="td">Filtro F&G ? ATR SL/TP ? orden mercado ? SQLite ? trailing stop ? Telegram.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--purple);color:var(--purple)">4</div><div class="tc"><div class="tt">R√©gimen HMM</div><div class="td">Modelo HMM + 200 velas 4h + 5 features + Viterbi ? estado actual. Evento REGIME_CHANGE si cambi√≥.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--red);color:var(--red)">5</div><div class="tc"><div class="tt">Salida por r√©gimen</div><div class="td">LONG + BEAR ? cierre. SHORT + BULL ? cierre. Evento REGIME_EXIT.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--green);color:var(--green)">6</div><div class="tc"><div class="tt">An√°lisis Grupo A <span style="color:var(--muted);font-weight:400">(cada 4h)</span></div><div class="td">Si no tiene posici√≥n Y pasaron ?4h. Filtro mec√°nico ? Veto Haiku ? Ejecuci√≥n.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--cyan);color:var(--cyan)">7</div><div class="tc"><div class="tt">An√°lisis Grupo B</div><div class="td">Claude Sonnet momentum. Stop 3%, target 15%. M√°x 1 posici√≥n B.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--green);color:var(--green)">8</div><div class="tc"><div class="tt">Ejecutar se√±ales</div><div class="td">Filtro F&G ? ATR SL/TP ? orden mercado ? SQLite ? trailing stop ? Telegram.</div></div></div>
 <div class="ts"><div class="tnum" style="border-color:var(--muted);color:var(--muted)">9</div><div class="tc"><div class="tt">Dashboard + Gist</div><div class="td">Escribe dashboard_state.json. Upload a Gist si configurado.</div></div></div>
-<div class="ts"><div class="tnum" style="border-color:var(--amber);color:var(--amber)">10</div><div class="tc"><div class="tt">Resumen Telegram</div><div class="td">Cada 3 ciclos con actividad: F&G, rÈgimenes, balance. Silent. Duerme 15 min.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--amber);color:var(--amber)">10</div><div class="tc"><div class="tt">Resumen Telegram</div><div class="td">Cada 3 ciclos con actividad: F&G, r√©gimenes, balance. Silent. Duerme 15 min.</div></div></div>
 
-<div class="sh">¡rbol de decisiones ó Grupo A</div>
+<div class="sh">√Årbol de decisiones ‚Äî Grupo A</div>
 
-<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">øDebo analizar este par?</div></div><div class="chv">?</div></div>
-<div class="card-b"><div class="tn"><div class="tq">øTiene posiciÛn abierta?</div><div class="tn"><span class="tl ln">SÕ ? SKIP</span></div><div class="tn"><div class="tq">øPasaron ? 4h?</div><div class="tn"><span class="tl ln">NO ? SKIP</span></div><div class="tn"><span class="tl lg">SÕ ? Filtro mec·nico</span></div></div></div></div></div>
+<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">¬øDebo analizar este par?</div></div><div class="chv">?</div></div>
+<div class="card-b"><div class="tn"><div class="tq">¬øTiene posici√≥n abierta?</div><div class="tn"><span class="tl ln">S√ç ? SKIP</span></div><div class="tn"><div class="tq">¬øPasaron ? 4h?</div><div class="tn"><span class="tl ln">NO ? SKIP</span></div><div class="tn"><span class="tl lg">S√ç ? Filtro mec√°nico</span></div></div></div></div></div>
 
-<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Filtro mec·nico (sin IA)</div><div class="card-s">data.py ? check_entry_conditions()</div></div><div class="chv">?</div></div>
+<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Filtro mec√°nico (sin IA)</div><div class="card-s">data.py ? check_entry_conditions()</div></div><div class="chv">?</div></div>
 <div class="card-b">
-<div class="tn"><div class="tq">1. øRÈgimen operable?</div><div class="tn"><span class="tl ly">BULL_TREND ? LONG</span></div><div class="tn"><span class="tl ly">BEAR_TREND ? SHORT</span></div><div class="tn"><span class="tl ln">SIDEWAYS / REVERSAL / UNKNOWN ? BLOQUEADO</span></div></div>
-<div class="tn"><div class="tq">2. øSeÒal fuerte?</div><div class="tn"><span class="tl ly">EMA_CROSS ó cruce EMA20/50 en ˙ltimas 4 velas</span></div><div class="tn"><span class="tl ly">RSI_RECOVERY ó saliÛ de oversold (&lt;35?&gt;40)</span></div><div class="tn"><span class="tl ly">RSI_REJECTION ó saliÛ de overbought (&gt;65?&lt;60)</span></div><div class="tn"><span class="tl lw">ALIGNMENT ó sin seÒal fuerte ? rangos estrictos</span></div></div>
-<div class="tn"><div class="tq">3. øEMA alineada?</div><div class="tn"><span class="tl ly">LONG + EMA20 &gt; EMA50 ? OK</span></div><div class="tn"><span class="tl ly">SHORT + EMA20 &lt; EMA50 ? OK</span></div><div class="tn"><span class="tl lw">No alinea + EMA_CROSS ? OK</span></div><div class="tn"><span class="tl ln">No alinea + otro ? BLOQUEADO</span></div></div>
-<div class="tn"><div class="tq">4. øRSI en zona v·lida?</div><div class="tn"><span class="tl ly">LONG: 42-65 / 42-72 (cross) / 35-65 (recovery)</span></div><div class="tn"><span class="tl ly">SHORT: 35-58 / 28-58 (cross) / 35-65 (rejection)</span></div><div class="tn"><span class="tl ln">Fuera de rango ? BLOQUEADO</span></div></div>
-<div class="tn"><div class="tq">5. øVolumen suficiente?</div><div class="tn"><span class="tl ly">? 1.3◊ (? 1.2◊ con seÒal fuerte) ? CALIFICADO ?</span></div><div class="tn"><span class="tl ln">Bajo ? BLOQUEADO</span></div></div>
-<div class="hb">Si alguna condiciÛn bloquea ? evento <code>ENTRY_CHECK</code> con blockers.</div>
+<div class="tn"><div class="tq">1. ¬øR√©gimen operable?</div><div class="tn"><span class="tl ly">BULL_TREND ? LONG</span></div><div class="tn"><span class="tl ly">BEAR_TREND ? SHORT</span></div><div class="tn"><span class="tl ln">SIDEWAYS / REVERSAL / UNKNOWN ? BLOQUEADO</span></div></div>
+<div class="tn"><div class="tq">2. ¬øSe√±al fuerte?</div><div class="tn"><span class="tl ly">EMA_CROSS ‚Äî cruce EMA20/50 en √∫ltimas 4 velas</span></div><div class="tn"><span class="tl ly">RSI_RECOVERY ‚Äî sali√≥ de oversold (&lt;35?&gt;40)</span></div><div class="tn"><span class="tl ly">RSI_REJECTION ‚Äî sali√≥ de overbought (&gt;65?&lt;60)</span></div><div class="tn"><span class="tl lw">ALIGNMENT ‚Äî sin se√±al fuerte ? rangos estrictos</span></div></div>
+<div class="tn"><div class="tq">3. ¬øEMA alineada?</div><div class="tn"><span class="tl ly">LONG + EMA20 &gt; EMA50 ? OK</span></div><div class="tn"><span class="tl ly">SHORT + EMA20 &lt; EMA50 ? OK</span></div><div class="tn"><span class="tl lw">No alinea + EMA_CROSS ? OK</span></div><div class="tn"><span class="tl ln">No alinea + otro ? BLOQUEADO</span></div></div>
+<div class="tn"><div class="tq">4. ¬øRSI en zona v√°lida?</div><div class="tn"><span class="tl ly">LONG: 42-65 / 42-72 (cross) / 35-65 (recovery)</span></div><div class="tn"><span class="tl ly">SHORT: 35-58 / 28-58 (cross) / 35-65 (rejection)</span></div><div class="tn"><span class="tl ln">Fuera de rango ? BLOQUEADO</span></div></div>
+<div class="tn"><div class="tq">5. ¬øVolumen suficiente?</div><div class="tn"><span class="tl ly">? 1.3√ó (? 1.2√ó con se√±al fuerte) ? CALIFICADO ?</span></div><div class="tn"><span class="tl ln">Bajo ? BLOQUEADO</span></div></div>
+<div class="hb">Si alguna condici√≥n bloquea ? evento <code>ENTRY_CHECK</code> con blockers.</div>
 </div></div>
 
-<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Veto Claude Haiku</div><div class="card-s">brain.py ? analyze_veto() ó claude-haiku-4</div></div><div class="chv">?</div></div>
+<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Veto Claude Haiku</div><div class="card-s">brain.py ? analyze_veto() ‚Äî claude-haiku-4</div></div><div class="chv">?</div></div>
 <div class="card-b">
-<div class="tn"><div class="tq">øRazÛn objetiva para no ejecutar?</div><div class="tn"><span class="tl ln">Evento macro inminente ? VETO</span></div><div class="tn"><span class="tl ln">Divergencia RSI obvia ? VETO</span></div><div class="tn"><span class="tl ln">BTC en caÌda libre (altcoin) ? VETO</span></div><div class="tn"><span class="tl ln">SobreextensiÛn extrema ? VETO</span></div><div class="tn"><span class="tl ly">Todo OK ? APROBADO (convicciÛn 9/10)</span></div></div>
+<div class="tn"><div class="tq">¬øRaz√≥n objetiva para no ejecutar?</div><div class="tn"><span class="tl ln">Evento macro inminente ? VETO</span></div><div class="tn"><span class="tl ln">Divergencia RSI obvia ? VETO</span></div><div class="tn"><span class="tl ln">BTC en ca√≠da libre (altcoin) ? VETO</span></div><div class="tn"><span class="tl ln">Sobreextensi√≥n extrema ? VETO</span></div><div class="tn"><span class="tl ly">Todo OK ? APROBADO (convicci√≥n 9/10)</span></div></div>
 <div class="hb">NO veta por incertidumbre, volatilidad normal o falta de datos. En duda, aprueba.</div>
 </div></div>
 
-<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">?</div><div><div class="card-t">Pre-ejecuciÛn y ejecuciÛn</div><div class="card-s">executor.py ? execute_signal()</div></div><div class="chv">?</div></div>
+<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">?</div><div><div class="card-t">Pre-ejecuci√≥n y ejecuci√≥n</div><div class="card-s">executor.py ? execute_signal()</div></div><div class="chv">?</div></div>
 <div class="card-b">
 <div class="tn"><div class="tq">Filtros:</div><div class="tn"><span class="tl ln">LONG + F&G &gt; 80 ? BLOQUEADO</span></div><div class="tn"><span class="tl ln">SHORT + F&G &lt; 20 ? BLOQUEADO</span></div><div class="tn"><span class="tl ln">Halted o ? 2 posiciones ? BLOQUEADO</span></div></div>
-<div class="tn"><div class="tq">EjecuciÛn:</div><div class="tn"><span class="tl lg">ATR(14) 1h ? SL = entry ± ATR◊1.5, TP = entry ± ATR◊3</span></div><div class="tn"><span class="tl lw">Fallback: SL 4%, TP 8%</span></div><div class="tn"><span class="tl lg">$50/precio ? orden mercado Binance ? SQLite ? trailing ? Telegram</span></div></div>
+<div class="tn"><div class="tq">Ejecuci√≥n:</div><div class="tn"><span class="tl lg">ATR(14) 1h ? SL = entry ¬± ATR√ó1.5, TP = entry ¬± ATR√ó3</span></div><div class="tn"><span class="tl lw">Fallback: SL 4%, TP 8%</span></div><div class="tn"><span class="tl lg">$50/precio ? orden mercado Binance ? SQLite ? trailing ? Telegram</span></div></div>
 </div></div>
 
-<div class="sh">CÛmo se cierran las posiciones</div>
+<div class="sh">C√≥mo se cierran las posiciones</div>
 <div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">4 formas de cierre</div></div><div class="chv">?</div></div>
-<div class="card-b"><table class="it"><tr><th>Mecanismo</th><th>Frecuencia</th><th>CÛmo</th></tr>
-<tr><td><b>SL/TP est·tico</b></td><td>Cada 15 min</td><td>Precio vs stop_loss/take_profit en DB</td></tr>
-<tr><td><b>Trailing Stop ATR</b></td><td>Tiempo real</td><td>Stop sube/baja con precio. Retroceso ATR◊1.5 ? cierre</td></tr>
-<tr><td><b>Cambio rÈgimen</b></td><td>Cada 15 min</td><td>LONG+BEAR o SHORT+BULL ? cierre inmediato</td></tr>
+<div class="card-b"><table class="it"><tr><th>Mecanismo</th><th>Frecuencia</th><th>C√≥mo</th></tr>
+<tr><td><b>SL/TP est√°tico</b></td><td>Cada 15 min</td><td>Precio vs stop_loss/take_profit en DB</td></tr>
+<tr><td><b>Trailing Stop ATR</b></td><td>Tiempo real</td><td>Stop sube/baja con precio. ATR(14) 1h. Retroceso ATR√ó1.5 ? cierre</td></tr>
+<tr><td><b>Cambio r√©gimen</b></td><td>Cada 15 min</td><td>LONG+BEAR o SHORT+BULL ? cierre inmediato</td></tr>
 <tr><td><b>Manual</b></td><td>On-demand</td><td>POST /api/close desde dashboard</td></tr>
 </table></div></div>
 
-<div class="sh">Los 4 RegÌmenes de Mercado (HMM)</div>
+<div class="sh">Los 4 Reg√≠menes de Mercado (HMM)</div>
 <div class="rg">
   <div class="rc rb"><h4>?? BULL_TREND</h4><p>Alcista. Vol ~0.70%/4h. Persistencia ~95%.<br><b>Busca LONG</b>.</p></div>
-  <div class="rc rr"><h4>?? BEAR_TREND</h4><p>Bajista. Vol ~1.50%/4h. ConvicciÛn mÌn 8.<br><b>Cierra LONGs</b>.</p></div>
+  <div class="rc rr"><h4>?? BEAR_TREND</h4><p>Bajista. Vol ~1.50%/4h. Convicci√≥n m√≠n 8.<br><b>Cierra LONGs</b>.</p></div>
   <div class="rc rs"><h4>?? SIDEWAYS</h4><p>Lateral. Vol ~0.66%/4h. Sin tendencia.<br><b>No opera</b>.</p></div>
-  <div class="rc rv"><h4>?? REVERSAL</h4><p>RecuperaciÛn. Vol ~1.12%/4h. TransiciÛn.<br><b>No opera</b>.</p></div>
+  <div class="rc rv"><h4>?? REVERSAL</h4><p>Recuperaci√≥n. Vol ~1.12%/4h. Transici√≥n.<br><b>No opera</b>.</p></div>
 </div>
-<div class="hb"><b>Solo BULL y BEAR permiten entradas.</b> GaussianHMM(n=4), 2 aÒos datos 4h, 10 reinicios.</div>
+<div class="hb"><b>Solo BULL y BEAR permiten entradas.</b> GaussianHMM(n=4), 2 a√±os datos 4h, 10 reinicios.</div>
 
 <div class="sh">Reglas de riesgo</div>
-<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">???</div><div><div class="card-t">Par·metros en config.py</div></div><div class="chv">?</div></div>
-<div class="card-b"><table class="it"><tr><th>Par·metro</th><th>Valor</th><th>DescripciÛn</th></tr>
-<tr><td>MAX_TRADE_USD</td><td>$50</td><td>Monto m·ximo por operaciÛn</td></tr>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">???</div><div><div class="card-t">Par√°metros en config.py</div></div><div class="chv">?</div></div>
+<div class="card-b"><table class="it"><tr><th>Par√°metro</th><th>Valor</th><th>Descripci√≥n</th></tr>
+<tr><td>MAX_TRADE_USD</td><td>$50</td><td>Monto m√°ximo por operaci√≥n</td></tr>
 <tr><td>STOP_LOSS_PCT</td><td>4%</td><td>Fallback si ATR falla</td></tr>
-<tr><td>MAX_DAILY_LOSS_USD</td><td>$30</td><td>LÌmite diario ? halt</td></tr>
-<tr><td>MAX_OPEN_POSITIONS</td><td>2</td><td>Posiciones simult·neas</td></tr>
-<tr><td>MIN_SIGNAL_CONVICTION</td><td>8</td><td>ConvicciÛn mÌnima</td></tr>
+<tr><td>MAX_DAILY_LOSS_USD</td><td>$30</td><td>L√≠mite diario ? halt</td></tr>
+<tr><td>MAX_OPEN_POSITIONS</td><td>2</td><td>Posiciones simult√°neas</td></tr>
+<tr><td>MIN_SIGNAL_CONVICTION</td><td>8</td><td>Convicci√≥n m√≠nima</td></tr>
 <tr><td>STOP_LOSS_PCT_B</td><td>3%</td><td>Stop Grupo B</td></tr>
 <tr><td>TAKE_PROFIT_PCT_B</td><td>15%</td><td>Target Grupo B (5:1)</td></tr>
 <tr><td>ATR_MULT</td><td>1.5</td><td>Multiplicador trailing</td></tr>
@@ -176,27 +176,27 @@
 
 <div class="sh">Componentes del sistema</div>
 <div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Datos de mercado</div><div class="card-s">data.py</div></div><div class="chv">?</div></div><div class="card-b">Binance Public API. 100 velas 4h. RSI(14), EMA20/50, vol_ratio, EMA cross, RSI recovery/rejection. F&G. Top movers B.<div class="tr"><span class="tg">requests</span><span class="tg">pandas</span><span class="tg">Binance API</span></div></div></div>
-<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Clasificador HMM</div><div class="card-s">regime.py ∑ models/hmm_*.pkl</div></div><div class="chv">?</div></div><div class="card-b">GaussianHMM(4), 2 aÒos 4h. Features: log_ret, vol_20, vol_ratio, RSI_c, EMA50_slope. Cache memoria. Viterbi.<div class="tr"><span class="tg">hmmlearn</span><span class="tg">joblib</span><span class="tg">sklearn</span></div></div></div>
-<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Motor IA</div><div class="card-s">brain.py</div></div><div class="chv">?</div></div><div class="card-b">3 prompts: <b>An·lisis</b> (Sonnet, cuantitativo), <b>Grupo B</b> (Sonnet, momentum), <b>Veto</b> (Haiku, risk manager). Parseo regex.<div class="tr"><span class="tg">anthropic</span><span class="tg">sonnet-4</span><span class="tg">haiku-4</span></div></div></div>
-<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">?</div><div><div class="card-t">Ejecutor</div><div class="card-s">executor.py ∑ trades.db</div></div><div class="chv">?</div></div><div class="card-b">”rdenes Binance via ccxt. SL/TP con ATR(14) 1h. SQLite: trades + events. 4 tipos cierre.<div class="tr"><span class="tg">ccxt</span><span class="tg">sqlite3</span><span class="tg">Binance</span></div></div></div>
-<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">WebSocket + Trailing</div><div class="card-s">main_async.py ∑ binance_ws.py ∑ trailing_stop.py</div></div><div class="chv">?</div></div><div class="card-b">WS: stream.binance.com, miniTicker, reconnect 2s?60s. Trailing: stop ratchet ATR◊1.5, persiste en DB.<div class="tr"><span class="tg">websockets</span><span class="tg">asyncio</span><span class="tg">ATR 1h</span></div></div></div>
-<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Telegram</div><div class="card-s">telegram_alerts.py</div></div><div class="chv">?</div></div><div class="card-b">7 tipos: startup, seÒal, ejecuciÛn, cierre, resumen, error, daily halt. HTML Bot API.<div class="tr"><span class="tg">requests</span><span class="tg">Bot API</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Clasificador HMM</div><div class="card-s">regime.py ¬∑ models/hmm_*.pkl</div></div><div class="chv">?</div></div><div class="card-b">GaussianHMM(4), 2 a√±os 4h. Features: log_ret, vol_20, vol_ratio, RSI_c, EMA50_slope. Cache memoria. Viterbi.<div class="tr"><span class="tg">hmmlearn</span><span class="tg">joblib</span><span class="tg">sklearn</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Motor IA</div><div class="card-s">brain.py</div></div><div class="chv">?</div></div><div class="card-b">3 prompts: <b>An√°lisis</b> (Sonnet, cuantitativo), <b>Grupo B</b> (Sonnet, momentum), <b>Veto</b> (Haiku, risk manager). Parseo regex.<div class="tr"><span class="tg">anthropic</span><span class="tg">sonnet-4</span><span class="tg">haiku-4</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">?</div><div><div class="card-t">Ejecutor</div><div class="card-s">executor.py ¬∑ trades.db</div></div><div class="chv">?</div></div><div class="card-b">√ìrdenes Binance via ccxt. SL/TP con ATR(14) 4h. Trailing con ATR(14) 1h. SQLite: trades + events. 4 tipos cierre.<div class="tr"><span class="tg">ccxt</span><span class="tg">sqlite3</span><span class="tg">Binance</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">WebSocket + Trailing</div><div class="card-s">main_async.py ¬∑ binance_ws.py ¬∑ trailing_stop.py</div></div><div class="chv">?</div></div><div class="card-b">WS: stream.binance.com, miniTicker, reconnect 2s?60s. Trailing: stop ratchet ATR√ó1.5, persiste en DB.<div class="tr"><span class="tg">websockets</span><span class="tg">asyncio</span><span class="tg">ATR 1h</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Telegram</div><div class="card-s">telegram_alerts.py</div></div><div class="chv">?</div></div><div class="card-b">7 tipos: startup, se√±al, ejecuci√≥n, cierre, resumen, error, daily halt. HTML Bot API.<div class="tr"><span class="tg">requests</span><span class="tg">Bot API</span></div></div></div>
 <div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Backtest</div><div class="card-s">backtest/</div></div><div class="chv">?</div></div><div class="card-b">downloader, regime_trainer (HMM), simulator (Sharpe, win rate), optimizer (walk-forward), report (HTML).<div class="tr"><span class="tg">hmmlearn</span><span class="tg">pandas</span><span class="tg">numpy</span></div></div></div>
 
 <div class="sh">Tipos de eventos</div>
 <div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Eventos en DB</div></div><div class="chv">?</div></div>
-<div class="card-b"><table class="it"><tr><th>Tipo</th><th>Nivel</th><th>Cu·ndo</th></tr>
+<div class="card-b"><table class="it"><tr><th>Tipo</th><th>Nivel</th><th>Cu√°ndo</th></tr>
 <tr><td>STARTUP</td><td>INFO</td><td>Arranque</td></tr>
-<tr><td>ENTRY_CHECK</td><td>INFO</td><td>Par no calificÛ</td></tr>
+<tr><td>ENTRY_CHECK</td><td>INFO</td><td>Par no calific√≥</td></tr>
 <tr><td>CLAUDE_VETO</td><td>WARNING</td><td>Vetado por Haiku</td></tr>
-<tr><td>CLAUDE_SIGNAL</td><td>WARNING</td><td>SeÒal aprobada</td></tr>
-<tr><td>TRADE_OPEN</td><td>INFO</td><td>PosiciÛn abierta</td></tr>
-<tr><td>TRADE_CLOSE</td><td>SUCCESS/ERROR</td><td>PosiciÛn cerrada</td></tr>
-<tr><td>REGIME_CHANGE</td><td>INFO</td><td>RÈgimen cambiÛ</td></tr>
-<tr><td>REGIME_EXIT</td><td>WARNING</td><td>Cierre por rÈgimen</td></tr>
+<tr><td>CLAUDE_SIGNAL</td><td>WARNING</td><td>Se√±al aprobada</td></tr>
+<tr><td>TRADE_OPEN</td><td>INFO</td><td>Posici√≥n abierta</td></tr>
+<tr><td>TRADE_CLOSE</td><td>SUCCESS/ERROR</td><td>Posici√≥n cerrada</td></tr>
+<tr><td>REGIME_CHANGE</td><td>INFO</td><td>R√©gimen cambi√≥</td></tr>
+<tr><td>REGIME_EXIT</td><td>WARNING</td><td>Cierre por r√©gimen</td></tr>
 <tr><td>MOVER_DETECTED</td><td>WARNING</td><td>Mover Grupo B</td></tr>
 <tr><td>GROUP_B_SCAN</td><td>INFO</td><td>Scan sin movers</td></tr>
-<tr><td>DAILY_HALT</td><td>ERROR</td><td>LÌmite diario</td></tr>
+<tr><td>DAILY_HALT</td><td>ERROR</td><td>L√≠mite diario</td></tr>
 </table></div></div>
 
 </main>

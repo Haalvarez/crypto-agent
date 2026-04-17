@@ -1,10 +1,11 @@
 """
 strategies/trailing_stop.py
 ────────────────────────────
-TrailingStopManager — gestiona trailing stops basados en ATR(14) de velas 1h.
+TrailingStopManager — gestiona trailing stops basados en ATR(14).
 
-Lógica:
-  - Al abrir un trade: stop inicial = entrada − ATR * ATR_MULT (para LONG)
+Timeframes duales:
+  - SL/TP inicial: ATR(14) de velas 4h (mismo timeframe que la señal de entrada)
+  - Trailing stop: ATR(14) de velas 1h (granularidad fina para ratchet en tiempo real)
   - En cada tick de precio: si el precio sube, el stop sube con él (ratchet)
   - Si el precio toca o cruza el stop, retorna True → cerrar posición
 
@@ -26,7 +27,9 @@ log = logging.getLogger(__name__)
 # ── Parámetros ────────────────────────────────────────────────
 ATR_PERIOD  = 14       # período ATR sobre velas 1h
 ATR_MULT    = 1.5      # multiplicador: stop = entrada ± ATR * ATR_MULT
-KLINES_LIMIT = 60      # velas 1h a descargar (> ATR_PERIOD + margen)
+ATR_INTERVAL_TRAILING = "1h"   # timeframe para trailing stop (granular)
+ATR_INTERVAL_ENTRY    = "4h"   # timeframe para SL/TP inicial (mismo que señal)
+KLINES_LIMIT = 60      # velas a descargar (> ATR_PERIOD + margen)
 BINANCE_KLINES = "https://api.binance.com/api/v3/klines"
 
 
@@ -165,19 +168,19 @@ class TrailingStopManager:
 
 # ── Helpers internos ──────────────────────────────────────────
 
-async def _fetch_atr(symbol: str, period: int = ATR_PERIOD) -> Optional[float]:
-    """Descarga velas 1h desde Binance y calcula ATR(period). Async via executor."""
+async def _fetch_atr(symbol: str, period: int = ATR_PERIOD, interval: str = ATR_INTERVAL_TRAILING) -> Optional[float]:
+    """Descarga velas desde Binance y calcula ATR(period). Async via executor."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _calc_atr_sync, symbol, period)
+    return await loop.run_in_executor(None, _calc_atr_sync, symbol, period, interval)
 
 
-def _calc_atr_sync(symbol: str, period: int) -> Optional[float]:
-    """Versión sincrónica del cálculo ATR (se llama desde executor)."""
+def _calc_atr_sync(symbol: str, period: int, interval: str = ATR_INTERVAL_TRAILING) -> Optional[float]:
+    """Versión sincrónica del cálculo ATR. interval: '1h' (trailing) o '4h' (entry SL/TP)."""
     binance_sym = symbol.replace("/", "")
     try:
         resp = requests.get(
             BINANCE_KLINES,
-            params={"symbol": binance_sym, "interval": "1h", "limit": KLINES_LIMIT},
+            params={"symbol": binance_sym, "interval": interval, "limit": KLINES_LIMIT},
             timeout=10,
         )
         klines = resp.json()

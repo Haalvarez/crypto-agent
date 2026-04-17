@@ -264,12 +264,13 @@ def parse_price(value: str) -> float:
 def _calc_sl_tp(symbol: str, direction: str, entry: float,
                 stop_pct: float, take_profit_signal: float) -> tuple[float, float]:
     """
-    Calcula SL basado en ATR(14) 1h. Fallback a porcentaje fijo si ATR falla.
+    Calcula SL basado en ATR(14) 4h (mismo timeframe que la señal de entrada).
+    Fallback a porcentaje fijo si ATR falla.
     TP: usa el sugerido por Claude si es válido; si no, 2× el riesgo ATR (R:R 1:2).
     """
-    from strategies.trailing_stop import _calc_atr_sync, ATR_MULT
+    from strategies.trailing_stop import _calc_atr_sync, ATR_MULT, ATR_INTERVAL_ENTRY
 
-    atr = _calc_atr_sync(symbol, period=14)
+    atr = _calc_atr_sync(symbol, period=14, interval=ATR_INTERVAL_ENTRY)
     if atr and atr > 0:
         if direction == 'LONG':
             sl = entry - atr * ATR_MULT
@@ -295,7 +296,7 @@ def _calc_sl_tp(symbol: str, direction: str, entry: float,
 def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> dict | None:
     """
     Ejecuta una señal accionable en Binance.
-    SL calculado con ATR(14) 1h (fallback a % fijo si ATR no disponible).
+    SL calculado con ATR(14) 4h (fallback a % fijo si ATR no disponible).
     Retorna dict con resultado o None si no se ejecutó.
     """
     init_db()
