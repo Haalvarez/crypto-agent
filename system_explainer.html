@@ -3,906 +3,203 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Crypto Agent — Arquitectura del Sistema</title>
+<meta name="theme-color" content="#080b14">
+<title>Crypto Agent � Arquitectura</title>
 <style>
-  :root {
-    --bg:       #080b14;
-    --surface:  #0f1424;
-    --surface2: #161b2e;
-    --border:   #1e2640;
-    --blue:     #3b82f6;
-    --purple:   #8b5cf6;
-    --green:    #10b981;
-    --amber:    #f59e0b;
-    --red:      #ef4444;
-    --text:     #e2e8f0;
-    --muted:    #64748b;
-    --dim:      #94a3b8;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* ── Stars background ── */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,.15) 0%, transparent 100%),
-      radial-gradient(1px 1px at 80% 10%, rgba(255,255,255,.1) 0%, transparent 100%),
-      radial-gradient(1px 1px at 50% 70%, rgba(255,255,255,.12) 0%, transparent 100%),
-      radial-gradient(1px 1px at 10% 80%, rgba(255,255,255,.08) 0%, transparent 100%),
-      radial-gradient(1px 1px at 90% 60%, rgba(255,255,255,.1) 0%, transparent 100%);
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  main { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; }
-
-  /* ── Hero ── */
-  .hero {
-    text-align: center;
-    padding: 60px 24px 40px;
-  }
-  .hero-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(139,92,246,.15);
-    border: 1px solid rgba(139,92,246,.3);
-    border-radius: 20px;
-    padding: 5px 16px;
-    font-size: .8rem;
-    color: #a78bfa;
-    margin-bottom: 20px;
-    animation: fadeDown .6s ease both;
-  }
-  .hero h1 {
-    font-size: 2.4rem;
-    font-weight: 800;
-    letter-spacing: -.02em;
-    animation: fadeDown .6s .1s ease both;
-  }
-  .hero h1 span { color: var(--purple); }
-  .hero p {
-    color: var(--dim);
-    font-size: 1rem;
-    margin-top: 12px;
-    max-width: 560px;
-    margin-inline: auto;
-    line-height: 1.7;
-    animation: fadeDown .6s .2s ease both;
-  }
-  .cycle-tag {
-    display: inline-block;
-    margin-top: 20px;
-    background: rgba(16,185,129,.1);
-    border: 1px solid rgba(16,185,129,.25);
-    border-radius: 8px;
-    padding: 8px 20px;
-    font-size: .85rem;
-    color: var(--green);
-    animation: fadeDown .6s .3s ease both;
-  }
-
-  /* ── Pipeline diagram ── */
-  .pipeline-wrap {
-    margin: 48px 0 56px;
-    animation: fadeUp .7s .4s ease both;
-  }
-  .pipeline-wrap h2 {
-    text-align: center;
-    font-size: .75rem;
-    text-transform: uppercase;
-    letter-spacing: .12em;
-    color: var(--muted);
-    margin-bottom: 32px;
-  }
-  .pipeline {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding: 20px 0;
-  }
-
-  /* nodes */
-  .node {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-    cursor: pointer;
-  }
-  .node-box {
-    width: 88px;
-    height: 72px;
-    border-radius: 14px;
-    border: 1.5px solid;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    position: relative;
-    transition: transform .2s, box-shadow .2s;
-  }
-  .node:hover .node-box { transform: translateY(-3px); }
-  .node-box .icon { font-size: 1.4rem; }
-  .node-box .label { font-size: .65rem; font-weight: 600; text-align: center; line-height: 1.2; }
-
-  /* node colors */
-  .node-box.blue   { background: rgba(59,130,246,.1);  border-color: rgba(59,130,246,.4);  color: #93c5fd; }
-  .node-box.purple { background: rgba(139,92,246,.12); border-color: rgba(139,92,246,.4);  color: #c4b5fd; }
-  .node-box.green  { background: rgba(16,185,129,.1);  border-color: rgba(16,185,129,.35); color: #6ee7b7; }
-  .node-box.amber  { background: rgba(245,158,11,.1);  border-color: rgba(245,158,11,.35); color: #fcd34d; }
-  .node-box.red    { background: rgba(239,68,68,.08);  border-color: rgba(239,68,68,.3);   color: #fca5a5; }
-
-  /* pulse glow on node */
-  .node-box.blue.active   { box-shadow: 0 0 20px rgba(59,130,246,.4); }
-  .node-box.purple.active { box-shadow: 0 0 20px rgba(139,92,246,.5); }
-  .node-box.green.active  { box-shadow: 0 0 20px rgba(16,185,129,.4); }
-  .node-box.amber.active  { box-shadow: 0 0 20px rgba(245,158,11,.4); }
-
-  .node-label { font-size: .7rem; color: var(--muted); text-align: center; max-width: 88px; }
-
-  /* arrows */
-  .arrow {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    flex-shrink: 0;
-    width: 48px;
-    position: relative;
-  }
-  .arrow-line {
-    width: 100%;
-    height: 2px;
-    border-radius: 1px;
-    position: relative;
-    overflow: visible;
-  }
-  .arrow-line::after {
-    content: '';
-    position: absolute;
-    right: -6px;
-    top: -4px;
-    width: 0;
-    height: 0;
-    border-left: 8px solid;
-    border-top: 5px solid transparent;
-    border-bottom: 5px solid transparent;
-  }
-  .arrow-line.blue   { background: rgba(59,130,246,.4); }
-  .arrow-line.blue::after   { border-left-color: rgba(59,130,246,.6); }
-  .arrow-line.purple { background: rgba(139,92,246,.4); }
-  .arrow-line.purple::after { border-left-color: rgba(139,92,246,.6); }
-  .arrow-line.green  { background: rgba(16,185,129,.4); }
-  .arrow-line.green::after  { border-left-color: rgba(16,185,129,.6); }
-  .arrow-line.amber  { background: rgba(245,158,11,.4); }
-  .arrow-line.amber::after  { border-left-color: rgba(245,158,11,.6); }
-
-  .arrow-label { font-size: .58rem; color: var(--muted); text-align: center; white-space: nowrap; }
-
-  /* animated packet traveling on arrow */
-  .packet {
-    position: absolute;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    top: -2.5px;
-    animation: travel 2.4s linear infinite;
-  }
-  .packet.blue   { background: var(--blue);   box-shadow: 0 0 6px var(--blue); }
-  .packet.purple { background: var(--purple); box-shadow: 0 0 6px var(--purple); }
-  .packet.green  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
-  .packet.amber  { background: var(--amber);  box-shadow: 0 0 6px var(--amber); }
-
-  @keyframes travel {
-    0%   { left: 0;    opacity: 0; }
-    10%  { opacity: 1; }
-    90%  { opacity: 1; }
-    100% { left: 100%; opacity: 0; }
-  }
-
-  /* stagger packets */
-  .arrow:nth-child(2)  .packet { animation-delay: 0s; }
-  .arrow:nth-child(4)  .packet { animation-delay: .4s; }
-  .arrow:nth-child(6)  .packet { animation-delay: .8s; }
-  .arrow:nth-child(8)  .packet { animation-delay: 1.2s; }
-  .arrow:nth-child(10) .packet { animation-delay: 1.6s; }
-  .arrow:nth-child(12) .packet { animation-delay: 2.0s; }
-
-  /* node pulse animation */
-  @keyframes nodePulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: .7; }
-  }
-
-  /* ── Section title ── */
-  .section-title {
-    font-size: .72rem;
-    text-transform: uppercase;
-    letter-spacing: .12em;
-    color: var(--muted);
-    margin-bottom: 20px;
-  }
-
-  /* ── Component cards ── */
-  .cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px;
-    margin-bottom: 56px;
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: border-color .2s, transform .2s;
-    animation: fadeUp .6s ease both;
-  }
-  .card:hover { transform: translateY(-2px); }
-  .card.blue   { border-top: 2px solid var(--blue);   }
-  .card.purple { border-top: 2px solid var(--purple); }
-  .card.green  { border-top: 2px solid var(--green);  }
-  .card.amber  { border-top: 2px solid var(--amber);  }
-  .card.red    { border-top: 2px solid var(--red);    }
-
-  .card-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 18px;
-  }
-  .card-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-    flex-shrink: 0;
-  }
-  .card.blue   .card-icon { background: rgba(59,130,246,.15); }
-  .card.purple .card-icon { background: rgba(139,92,246,.15); }
-  .card.green  .card-icon { background: rgba(16,185,129,.12); }
-  .card.amber  .card-icon { background: rgba(245,158,11,.12); }
-  .card.red    .card-icon { background: rgba(239,68,68,.1);   }
-
-  .card-title { font-weight: 600; font-size: .95rem; }
-  .card-file  { font-size: .72rem; color: var(--muted); font-family: monospace; margin-top: 2px; }
-  .card-chevron { margin-left: auto; color: var(--muted); font-size: .75rem; transition: transform .25s; }
-  .card.open .card-chevron { transform: rotate(180deg); }
-
-  .card-body {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height .35s ease;
-  }
-  .card.open .card-body { max-height: 600px; }
-
-  .card-inner {
-    padding: 0 18px 18px;
-    border-top: 1px solid var(--border);
-  }
-  .card-desc {
-    color: var(--dim);
-    font-size: .85rem;
-    line-height: 1.65;
-    margin: 14px 0 14px;
-  }
-
-  .step-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
-  .step-list li {
-    display: flex;
-    gap: 10px;
-    font-size: .83rem;
-    color: var(--dim);
-    line-height: 1.5;
-  }
-  .step-num {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: .7rem;
-    font-weight: 700;
-    flex-shrink: 0;
-    margin-top: 1px;
-  }
-  .card.blue   .step-num { background: rgba(59,130,246,.2);  color: #93c5fd; }
-  .card.purple .step-num { background: rgba(139,92,246,.2);  color: #c4b5fd; }
-  .card.green  .step-num { background: rgba(16,185,129,.15); color: #6ee7b7; }
-  .card.amber  .step-num { background: rgba(245,158,11,.15); color: #fcd34d; }
-  .card.red    .step-num { background: rgba(239,68,68,.12);  color: #fca5a5; }
-
-  .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-  .tag {
-    font-size: .72rem;
-    border-radius: 5px;
-    padding: 3px 9px;
-    font-family: monospace;
-  }
-  .card.blue   .tag { background: rgba(59,130,246,.12);  color: #93c5fd; }
-  .card.purple .tag { background: rgba(139,92,246,.12);  color: #c4b5fd; }
-  .card.green  .tag { background: rgba(16,185,129,.1);   color: #6ee7b7; }
-  .card.amber  .tag { background: rgba(245,158,11,.1);   color: #fcd34d; }
-  .card.red    .tag { background: rgba(239,68,68,.08);   color: #fca5a5; }
-
-  /* ── Regime visual ── */
-  .regime-mini-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-top: 12px;
-  }
-  .regime-mini {
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: .78rem;
-  }
-  .regime-mini .rname { font-weight: 700; margin-bottom: 3px; }
-  .regime-mini .rdesc { color: rgba(255,255,255,.5); font-size: .72rem; }
-  .rm-bull { background: rgba(16,185,129,.1);  border: 1px solid rgba(16,185,129,.2); color: #6ee7b7; }
-  .rm-bear { background: rgba(239,68,68,.08);  border: 1px solid rgba(239,68,68,.2);  color: #fca5a5; }
-  .rm-side { background: rgba(100,116,139,.1); border: 1px solid rgba(100,116,139,.2);color: #94a3b8; }
-  .rm-rev  { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2); color: #fcd34d; }
-
-  /* ── Prompt preview ── */
-  .prompt-preview {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 14px;
-    font-family: monospace;
-    font-size: .75rem;
-    color: #a5b4fc;
-    margin-top: 12px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-  }
-  .prompt-preview .hl { color: #c4b5fd; font-weight: 700; }
-  .prompt-preview .val { color: #6ee7b7; }
-  .prompt-preview .comment { color: var(--muted); }
-
-  /* ── Flow timeline ── */
-  .timeline {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 28px 32px;
-    margin-bottom: 56px;
-    animation: fadeUp .6s .5s ease both;
-  }
-  .timeline h2 { font-size: 1rem; font-weight: 600; margin-bottom: 24px; }
-  .tl-steps { display: flex; flex-direction: column; gap: 0; }
-  .tl-step {
-    display: flex;
-    gap: 16px;
-    position: relative;
-  }
-  .tl-step:not(:last-child)::before {
-    content: '';
-    position: absolute;
-    left: 15px;
-    top: 32px;
-    bottom: 0;
-    width: 2px;
-    background: var(--border);
-  }
-  .tl-dot {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: .85rem;
-    flex-shrink: 0;
-    position: relative;
-    z-index: 1;
-  }
-  .tl-content { padding: 4px 0 28px; }
-  .tl-time { font-size: .7rem; color: var(--muted); margin-bottom: 3px; font-family: monospace; }
-  .tl-title { font-weight: 600; font-size: .9rem; margin-bottom: 4px; }
-  .tl-desc { font-size: .82rem; color: var(--dim); line-height: 1.5; }
-
-  /* ── Tech stack ── */
-  .tech-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 10px;
-    animation: fadeUp .6s .6s ease both;
-  }
-  .tech-item {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px;
-    text-align: center;
-  }
-  .tech-item .t-icon { font-size: 1.3rem; margin-bottom: 6px; }
-  .tech-item .t-name { font-size: .82rem; font-weight: 600; }
-  .tech-item .t-role { font-size: .72rem; color: var(--muted); margin-top: 3px; }
-
-  /* ── Animations ── */
-  @keyframes fadeDown {
-    from { opacity: 0; transform: translateY(-16px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  .cards-grid .card:nth-child(1) { animation-delay: .1s; }
-  .cards-grid .card:nth-child(2) { animation-delay: .15s; }
-  .cards-grid .card:nth-child(3) { animation-delay: .2s; }
-  .cards-grid .card:nth-child(4) { animation-delay: .25s; }
-  .cards-grid .card:nth-child(5) { animation-delay: .3s; }
-  .cards-grid .card:nth-child(6) { animation-delay: .35s; }
+  :root{--bg:#080b14;--surface:#0f1424;--surface2:#161b2e;--border:#1e2640;--blue:#3b82f6;--purple:#8b5cf6;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--cyan:#06b6d4;--text:#e2e8f0;--muted:#64748b;--dim:#94a3b8}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;line-height:1.6}
+  .nav-bar{display:flex;gap:6px;padding:10px 16px;background:rgba(8,11,20,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);flex-wrap:wrap;justify-content:center;position:sticky;top:0;z-index:100}
+  .nav-link{padding:5px 14px;border-radius:8px;font-size:.75rem;font-weight:600;border:1px solid var(--border);background:var(--surface2);color:var(--dim);text-decoration:none;transition:all .15s}
+  .nav-link:hover{color:var(--text);border-color:var(--purple)}
+  .nav-link.active{color:var(--text);border-color:var(--purple);background:rgba(139,92,246,.15)}
+  main{max-width:900px;margin:0 auto;padding:20px 16px 80px}
+  .hero{text-align:center;padding:40px 16px 30px}
+  .hero h1{font-size:2rem;font-weight:800}
+  .hero h1 span{color:var(--purple)}
+  .hero p{color:var(--dim);font-size:.9rem;margin-top:8px;max-width:600px;margin-inline:auto}
+  .sh{font-size:.7rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:32px 0 14px;border-left:3px solid var(--purple);padding-left:10px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden}
+  .card-h{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer}
+  .card-h:hover{background:rgba(139,92,246,.03)}
+  .card-i{font-size:1.2rem;flex-shrink:0}
+  .card-t{font-weight:700;font-size:.9rem}
+  .card-s{font-size:.7rem;color:var(--muted);font-family:monospace}
+  .chv{margin-left:auto;color:var(--muted);font-size:.65rem;transition:transform .2s}
+  .card.open .chv{transform:rotate(180deg)}
+  .card-b{display:none;border-top:1px solid var(--border);padding:14px 16px;font-size:.82rem;color:var(--dim)}
+  .card.open .card-b{display:block}
+  .tn{position:relative;padding:8px 0 8px 28px;border-left:2px solid var(--border);margin-left:10px}
+  .tn:last-child{border-left-color:transparent}
+  .tn::before{content:'';position:absolute;left:-2px;top:18px;width:16px;height:2px;background:var(--border)}
+  .tl{display:inline-block;padding:4px 10px;border-radius:6px;font-size:.78rem;font-weight:600}
+  .ly{background:rgba(16,185,129,.12);color:var(--green)}
+  .ln{background:rgba(239,68,68,.1);color:var(--red)}
+  .lg{background:rgba(59,130,246,.1);color:var(--blue)}
+  .lw{background:rgba(245,158,11,.1);color:var(--amber)}
+  .tq{font-size:.82rem;color:var(--text);margin-bottom:4px}
+  .ts{display:flex;gap:14px;margin-bottom:6px;position:relative}
+  .ts:not(:last-child)::after{content:'';position:absolute;left:17px;top:36px;width:2px;bottom:-6px;background:var(--border)}
+  .tnum{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0;border:2px solid}
+  .tc{flex:1;padding-bottom:14px}
+  .tt{font-weight:700;font-size:.88rem}
+  .td{font-size:.78rem;color:var(--dim);margin-top:4px;line-height:1.6}
+  .tf{font-size:.68rem;color:var(--muted);font-family:monospace}
+  .rg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .rc{padding:12px;border-radius:10px;border:1px solid}
+  .rc h4{font-size:.82rem;margin-bottom:4px}
+  .rc p{font-size:.72rem;color:var(--dim)}
+  .rb{background:rgba(16,185,129,.06);border-color:rgba(16,185,129,.2);color:#6ee7b7}
+  .rr{background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.2);color:#fca5a5}
+  .rs{background:rgba(100,116,139,.06);border-color:rgba(100,116,139,.2);color:#94a3b8}
+  .rv{background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.2);color:#fcd34d}
+  .pl{display:flex;align-items:center;gap:4px;overflow-x:auto;padding:16px 0;flex-wrap:wrap;justify-content:center}
+  .pn{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;text-align:center;min-width:80px;flex-shrink:0}
+  .pn .pi{font-size:1.2rem}
+  .pn .pp{font-size:.68rem;font-weight:600;margin-top:4px}
+  .pa{color:var(--muted);font-size:.8rem;flex-shrink:0}
+  .tr{display:flex;gap:4px;flex-wrap:wrap;margin-top:10px}
+  .tg{font-size:.62rem;font-weight:600;padding:2px 8px;border-radius:4px;background:rgba(139,92,246,.1);color:var(--purple)}
+  .it{width:100%;border-collapse:collapse;font-size:.78rem;margin-top:10px}
+  .it th{text-align:left;padding:6px 10px;background:var(--surface2);color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+  .it td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--dim)}
+  code{font-family:'SF Mono','Fira Code',monospace;font-size:.78rem;background:var(--surface2);padding:1px 5px;border-radius:3px;color:var(--cyan)}
+  .hb{background:var(--surface2);border-radius:8px;padding:12px 14px;font-size:.78rem;color:var(--dim);margin-top:10px;line-height:1.7;border-left:3px solid var(--purple)}
+  @media(max-width:600px){.rg{grid-template-columns:1fr}.pl{flex-direction:column}.pa{transform:rotate(90deg)}}
 </style>
 </head>
 <body>
-
-<!-- ── Hero ── -->
-<div class="hero">
-  <div class="hero-badge">🤖 Arquitectura del Sistema</div>
-  <h1>Crypto Agent<br><span>paso a paso</span></h1>
-  <p>Cómo un pipeline de datos, machine learning y lenguaje natural
-     toman decisiones de trading de forma autónoma.</p>
-  <div class="cycle-tag">⏱ Ciclo de ejecución: cada 4 horas</div>
+<div class="nav-bar">
+  <a class="nav-link" href="dashboard.html">?? Dashboard</a>
+  <a class="nav-link" href="timeline.html">?? Timeline</a>
+  <a class="nav-link active" href="system_explainer.html">?? Arquitectura</a>
 </div>
-
+<div class="hero">
+  <h1>Crypto<span>Agent</span> � Arquitectura</h1>
+  <p>Flujo de datos, �rboles de decisi�n, reglas de riesgo y componentes del sistema de trading aut�nomo.</p>
+</div>
 <main>
 
-<!-- ── Pipeline ── -->
-<div class="pipeline-wrap">
-  <h2>flujo de datos</h2>
-  <div class="pipeline">
-
-    <div class="node" onclick="pulse(this, 'blue')">
-      <div class="node-box blue active">
-        <span class="icon">📡</span>
-        <span class="label">Binance<br>API</span>
-      </div>
-      <div class="node-label">fuente de datos</div>
-    </div>
-
-    <div class="arrow">
-      <div class="arrow-line blue"><div class="packet blue"></div></div>
-      <div class="arrow-label">velas 4h<br>OHLCV</div>
-    </div>
-
-    <div class="node" onclick="pulse(this, 'blue')">
-      <div class="node-box blue">
-        <span class="icon">🔢</span>
-        <span class="label">data.py<br>regime.py</span>
-      </div>
-      <div class="node-label">indicadores<br>+ régimen</div>
-    </div>
-
-    <div class="arrow">
-      <div class="arrow-line purple"><div class="packet purple" style="animation-delay:.6s"></div></div>
-      <div class="arrow-label">contexto<br>enriquecido</div>
-    </div>
-
-    <div class="node" onclick="pulse(this, 'purple')">
-      <div class="node-box purple">
-        <span class="icon">🧠</span>
-        <span class="label">brain.py<br>Claude</span>
-      </div>
-      <div class="node-label">análisis IA</div>
-    </div>
-
-    <div class="arrow">
-      <div class="arrow-line green"><div class="packet green" style="animation-delay:1.2s"></div></div>
-      <div class="arrow-label">señales<br>parseadas</div>
-    </div>
-
-    <div class="node" onclick="pulse(this, 'green')">
-      <div class="node-box green">
-        <span class="icon">⚡</span>
-        <span class="label">executor<br>.py</span>
-      </div>
-      <div class="node-label">órdenes</div>
-    </div>
-
-    <div class="arrow">
-      <div class="arrow-line green"><div class="packet green" style="animation-delay:1.8s"></div></div>
-      <div class="arrow-label">orden<br>mercado</div>
-    </div>
-
-    <div class="node" onclick="pulse(this, 'green')">
-      <div class="node-box green">
-        <span class="icon">🏦</span>
-        <span class="label">Binance<br>Testnet</span>
-      </div>
-      <div class="node-label">exchange</div>
-    </div>
-
-    <div class="arrow">
-      <div class="arrow-line amber"><div class="packet amber" style="animation-delay:2.2s"></div></div>
-      <div class="arrow-label">notifica</div>
-    </div>
-
-    <div class="node" onclick="pulse(this, 'amber')">
-      <div class="node-box amber">
-        <span class="icon">📱</span>
-        <span class="label">Telegram</span>
-      </div>
-      <div class="node-label">alertas</div>
-    </div>
-
-  </div>
+<div class="sh">Flujo de datos � Pipeline principal</div>
+<div class="pl">
+  <div class="pn"><div class="pi">??</div><div class="pp">Binance API</div></div><div class="pa">?</div>
+  <div class="pn"><div class="pi">??</div><div class="pp">data.py</div></div><div class="pa">?</div>
+  <div class="pn"><div class="pi">??</div><div class="pp">regime.py<br>HMM</div></div><div class="pa">?</div>
+  <div class="pn"><div class="pi">??</div><div class="pp">Filtro<br>mec�nico</div></div><div class="pa">?</div>
+  <div class="pn"><div class="pi">??</div><div class="pp">Claude<br>Haiku veto</div></div><div class="pa">?</div>
+  <div class="pn"><div class="pi">?</div><div class="pp">executor.py</div></div><div class="pa">?</div>
+  <div class="pn"><div class="pi">??</div><div class="pp">Binance<br>Exchange</div></div><div class="pa">?</div>
+  <div class="pn"><div class="pi">??</div><div class="pp">Telegram</div></div>
+</div>
+<div class="hb">
+  <b>Dos hilos en paralelo:</b><br>
+  ?? <b>Hilo principal</b> (main.py): ciclo cada 15 min � monitoreo SL/TP + an�lisis cada 4h<br>
+  ? <b>Hilo async</b> (main_async.py): WebSocket tiempo real � trailing stop ATR din�mico
 </div>
 
-<!-- ── Timeline ── -->
-<div class="timeline">
-  <h2>¿Qué pasa en cada ciclo de 4h?</h2>
-  <div class="tl-steps">
+<div class="sh">Arranque del sistema</div>
+<div class="ts"><div class="tnum" style="border-color:var(--blue);color:var(--blue)">1</div><div class="tc"><div class="tt" style="color:var(--blue)">Iniciar servidor HTTP</div><div class="tf">main.py ? start_api_server()</div><div class="td">Puerto 8080. Dashboard, timeline, API REST. Railway health check.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--cyan);color:var(--cyan)">2</div><div class="tc"><div class="tt" style="color:var(--cyan)">Motor async (TrailingEngine)</div><div class="tf">main_async.py ? TrailingEngine.start()</div><div class="td">Hilo daemon: WebSocket Binance, carga posiciones, restaura trailing stops.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--purple);color:var(--purple)">3</div><div class="tc"><div class="tt" style="color:var(--purple)">Inicializar DB + STARTUP</div><div class="tf">executor.py ? init_db() + log_event()</div><div class="td">Tablas trades + events. Migra esquema. Evento STARTUP.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--amber);color:var(--amber)">4</div><div class="tc"><div class="tt" style="color:var(--amber)">Telegram startup</div><div class="tf">telegram_alerts.py ? send_startup()</div><div class="td">Confirma pares, intervalo monitoreo (15 min) y an�lisis (4h).</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--green);color:var(--green)">5</div><div class="tc"><div class="tt" style="color:var(--green)">Loop principal</div><div class="tf">main.py ? while True: run_cycle()</div><div class="td">run_cycle() cada 15 min. Si halted ? espera 1h.</div></div></div>
 
-    <div class="tl-step">
-      <div class="tl-dot" style="background:rgba(59,130,246,.15);color:#93c5fd">1</div>
-      <div class="tl-content">
-        <div class="tl-time">t = 0s</div>
-        <div class="tl-title" style="color:#93c5fd">Fetch de mercado</div>
-        <div class="tl-desc"><code>data.py</code> llama a Binance Public API y descarga las últimas 100 velas de 4h para cada par. Calcula RSI(14), EMA20, EMA50, ratio de volumen y cambio de la última vela. No requiere API key.</div>
-      </div>
-    </div>
+<div class="sh">Cada ciclo de monitoreo � 10 pasos (cada 15 min)</div>
+<div class="ts"><div class="tnum" style="border-color:var(--blue);color:var(--blue)">1</div><div class="tc"><div class="tt">Scan Grupo B <span style="color:var(--muted);font-weight:400">(1�/d�a)</span></div><div class="td">Top 2 movers USDT con |cambio 24h| > 5% y > $50M vol. Evento MOVER_DETECTED.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--blue);color:var(--blue)">2</div><div class="tc"><div class="tt">Datos de mercado</div><div class="td">100 velas 4h ? RSI(14), EMA20/50, vol_ratio, EMA cross, RSI recovery/rejection. F&G Index.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--red);color:var(--red)">3</div><div class="tc"><div class="tt">Monitor posiciones abiertas</div><div class="td">SL/TP check. LOSS ? acumulador diario. Si > $30 ? DAILY HALT. Evento TRADE_CLOSE.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--purple);color:var(--purple)">4</div><div class="tc"><div class="tt">R�gimen HMM</div><div class="td">Modelo HMM + 200 velas 4h + 5 features + Viterbi ? estado actual. Evento REGIME_CHANGE si cambi�.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--red);color:var(--red)">5</div><div class="tc"><div class="tt">Salida por r�gimen</div><div class="td">LONG + BEAR ? cierre. SHORT + BULL ? cierre. Evento REGIME_EXIT.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--green);color:var(--green)">6</div><div class="tc"><div class="tt">An�lisis Grupo A <span style="color:var(--muted);font-weight:400">(cada 4h)</span></div><div class="td">Si no tiene posici�n Y pasaron ?4h. Filtro mec�nico ? Veto Haiku ? Ejecuci�n.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--cyan);color:var(--cyan)">7</div><div class="tc"><div class="tt">An�lisis Grupo B</div><div class="td">Claude Sonnet momentum. Stop 3%, target 15%. M�x 1 posici�n B.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--green);color:var(--green)">8</div><div class="tc"><div class="tt">Ejecutar se�ales</div><div class="td">Filtro F&G ? ATR SL/TP ? orden mercado ? SQLite ? trailing stop ? Telegram.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--muted);color:var(--muted)">9</div><div class="tc"><div class="tt">Dashboard + Gist</div><div class="td">Escribe dashboard_state.json. Upload a Gist si configurado.</div></div></div>
+<div class="ts"><div class="tnum" style="border-color:var(--amber);color:var(--amber)">10</div><div class="tc"><div class="tt">Resumen Telegram</div><div class="td">Cada 3 ciclos con actividad: F&G, r�gimenes, balance. Silent. Duerme 15 min.</div></div></div>
 
-    <div class="tl-step">
-      <div class="tl-dot" style="background:rgba(139,92,246,.15);color:#c4b5fd">2</div>
-      <div class="tl-content">
-        <div class="tl-time">t = ~1s</div>
-        <div class="tl-title" style="color:#c4b5fd">Clasificación de régimen</div>
-        <div class="tl-desc"><code>regime.py</code> carga el modelo HMM pre-entrenado desde disco (cache en memoria). Calcula 5 features estadísticas de las velas 4h: log-return, volatilidad rolling, ratio de volumen, RSI centrado y pendiente de EMA50. El HMM predice en cuál de los 4 estados está el mercado actualmente.</div>
-      </div>
-    </div>
+<div class="sh">�rbol de decisiones � Grupo A</div>
 
-    <div class="tl-step">
-      <div class="tl-dot" style="background:rgba(139,92,246,.15);color:#c4b5fd">3</div>
-      <div class="tl-content">
-        <div class="tl-time">t = ~2s</div>
-        <div class="tl-title" style="color:#c4b5fd">Construcción del prompt</div>
-        <div class="tl-desc"><code>brain.py</code> combina el bloque de régimen (cuántas horas lleva el estado actual, probabilidad de persistencia, volatilidad del estado) con los indicadores de mercado. Este texto completo es lo que recibe Claude como input.</div>
-      </div>
-    </div>
+<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">�Debo analizar este par?</div></div><div class="chv">?</div></div>
+<div class="card-b"><div class="tn"><div class="tq">�Tiene posici�n abierta?</div><div class="tn"><span class="tl ln">S� ? SKIP</span></div><div class="tn"><div class="tq">�Pasaron ? 4h?</div><div class="tn"><span class="tl ln">NO ? SKIP</span></div><div class="tn"><span class="tl lg">S� ? Filtro mec�nico</span></div></div></div></div></div>
 
-    <div class="tl-step">
-      <div class="tl-dot" style="background:rgba(139,92,246,.2);color:#c4b5fd">4</div>
-      <div class="tl-content">
-        <div class="tl-time">t = ~3–6s</div>
-        <div class="tl-title" style="color:#c4b5fd">Análisis Claude (API)</div>
-        <div class="tl-desc">Claude recibe el contexto y sigue el system prompt: evalúa el régimen primero, luego los indicadores técnicos, luego el Fear &amp; Greed Index. Emite un bloque estructurado por activo con dirección, convicción 1-10, entrada, stop-loss, take-profit y tesis.</div>
-      </div>
-    </div>
+<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Filtro mec�nico (sin IA)</div><div class="card-s">data.py ? check_entry_conditions()</div></div><div class="chv">?</div></div>
+<div class="card-b">
+<div class="tn"><div class="tq">1. �R�gimen operable?</div><div class="tn"><span class="tl ly">BULL_TREND ? LONG</span></div><div class="tn"><span class="tl ly">BEAR_TREND ? SHORT</span></div><div class="tn"><span class="tl ln">SIDEWAYS / REVERSAL / UNKNOWN ? BLOQUEADO</span></div></div>
+<div class="tn"><div class="tq">2. �Se�al fuerte?</div><div class="tn"><span class="tl ly">EMA_CROSS � cruce EMA20/50 en �ltimas 4 velas</span></div><div class="tn"><span class="tl ly">RSI_RECOVERY � sali� de oversold (&lt;35?&gt;40)</span></div><div class="tn"><span class="tl ly">RSI_REJECTION � sali� de overbought (&gt;65?&lt;60)</span></div><div class="tn"><span class="tl lw">ALIGNMENT � sin se�al fuerte ? rangos estrictos</span></div></div>
+<div class="tn"><div class="tq">3. �EMA alineada?</div><div class="tn"><span class="tl ly">LONG + EMA20 &gt; EMA50 ? OK</span></div><div class="tn"><span class="tl ly">SHORT + EMA20 &lt; EMA50 ? OK</span></div><div class="tn"><span class="tl lw">No alinea + EMA_CROSS ? OK</span></div><div class="tn"><span class="tl ln">No alinea + otro ? BLOQUEADO</span></div></div>
+<div class="tn"><div class="tq">4. �RSI en zona v�lida?</div><div class="tn"><span class="tl ly">LONG: 42-65 / 42-72 (cross) / 35-65 (recovery)</span></div><div class="tn"><span class="tl ly">SHORT: 35-58 / 28-58 (cross) / 35-65 (rejection)</span></div><div class="tn"><span class="tl ln">Fuera de rango ? BLOQUEADO</span></div></div>
+<div class="tn"><div class="tq">5. �Volumen suficiente?</div><div class="tn"><span class="tl ly">? 1.3� (? 1.2� con se�al fuerte) ? CALIFICADO ?</span></div><div class="tn"><span class="tl ln">Bajo ? BLOQUEADO</span></div></div>
+<div class="hb">Si alguna condici�n bloquea ? evento <code>ENTRY_CHECK</code> con blockers.</div>
+</div></div>
 
-    <div class="tl-step">
-      <div class="tl-dot" style="background:rgba(59,130,246,.15);color:#93c5fd">5</div>
-      <div class="tl-content">
-        <div class="tl-time">t = ~6s</div>
-        <div class="tl-title" style="color:#93c5fd">Parseo de señales</div>
-        <div class="tl-desc">El texto de Claude es parseado con regex. Se extraen símbolo, dirección, convicción, precios de entrada/stop/target. Una señal es "accionable" si convicción ≥ 7 y la dirección no es NEUTRAL.</div>
-      </div>
-    </div>
+<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Veto Claude Haiku</div><div class="card-s">brain.py ? analyze_veto() � claude-haiku-4</div></div><div class="chv">?</div></div>
+<div class="card-b">
+<div class="tn"><div class="tq">�Raz�n objetiva para no ejecutar?</div><div class="tn"><span class="tl ln">Evento macro inminente ? VETO</span></div><div class="tn"><span class="tl ln">Divergencia RSI obvia ? VETO</span></div><div class="tn"><span class="tl ln">BTC en ca�da libre (altcoin) ? VETO</span></div><div class="tn"><span class="tl ln">Sobreextensi�n extrema ? VETO</span></div><div class="tn"><span class="tl ly">Todo OK ? APROBADO (convicci�n 9/10)</span></div></div>
+<div class="hb">NO veta por incertidumbre, volatilidad normal o falta de datos. En duda, aprueba.</div>
+</div></div>
 
-    <div class="tl-step">
-      <div class="tl-dot" style="background:rgba(16,185,129,.15);color:#6ee7b7">6</div>
-      <div class="tl-content">
-        <div class="tl-time">t = ~7s</div>
-        <div class="tl-title" style="color:#6ee7b7">Ejecución (si hay señal)</div>
-        <div class="tl-desc"><code>executor.py</code> verifica límites de riesgo: máximo de posiciones abiertas, pérdida diaria máxima, tamaño por operación. Si todo pasa, coloca una orden de mercado en Binance Testnet via <code>ccxt</code>. Guarda el trade en SQLite.</div>
-      </div>
-    </div>
+<div class="card open"><div class="card-h" onclick="toggle(this)"><div class="card-i">?</div><div><div class="card-t">Pre-ejecuci�n y ejecuci�n</div><div class="card-s">executor.py ? execute_signal()</div></div><div class="chv">?</div></div>
+<div class="card-b">
+<div class="tn"><div class="tq">Filtros:</div><div class="tn"><span class="tl ln">LONG + F&G &gt; 80 ? BLOQUEADO</span></div><div class="tn"><span class="tl ln">SHORT + F&G &lt; 20 ? BLOQUEADO</span></div><div class="tn"><span class="tl ln">Halted o ? 2 posiciones ? BLOQUEADO</span></div></div>
+<div class="tn"><div class="tq">Ejecuci�n:</div><div class="tn"><span class="tl lg">ATR(14) 1h ? SL = entry � ATR�1.5, TP = entry � ATR�3</span></div><div class="tn"><span class="tl lw">Fallback: SL 4%, TP 8%</span></div><div class="tn"><span class="tl lg">$50/precio ? orden mercado Binance ? SQLite ? trailing ? Telegram</span></div></div>
+</div></div>
 
-    <div class="tl-step">
-      <div class="tl-dot" style="background:rgba(245,158,11,.12);color:#fcd34d">7</div>
-      <div class="tl-content">
-        <div class="tl-time">t = ~8s</div>
-        <div class="tl-title" style="color:#fcd34d">Alertas Telegram</div>
-        <div class="tl-desc">Se envían las señales al celular con régimen actual, convicción, precio de entrada, stop y target. Al final del ciclo llega un resumen silencioso con el estado del portafolio. El agente duerme 4 horas y repite.</div>
-      </div>
-    </div>
+<div class="sh">C�mo se cierran las posiciones</div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">4 formas de cierre</div></div><div class="chv">?</div></div>
+<div class="card-b"><table class="it"><tr><th>Mecanismo</th><th>Frecuencia</th><th>C�mo</th></tr>
+<tr><td><b>SL/TP est�tico</b></td><td>Cada 15 min</td><td>Precio vs stop_loss/take_profit en DB</td></tr>
+<tr><td><b>Trailing Stop ATR</b></td><td>Tiempo real</td><td>Stop sube/baja con precio. Retroceso ATR�1.5 ? cierre</td></tr>
+<tr><td><b>Cambio r�gimen</b></td><td>Cada 15 min</td><td>LONG+BEAR o SHORT+BULL ? cierre inmediato</td></tr>
+<tr><td><b>Manual</b></td><td>On-demand</td><td>POST /api/close desde dashboard</td></tr>
+</table></div></div>
 
-  </div>
+<div class="sh">Los 4 Reg�menes de Mercado (HMM)</div>
+<div class="rg">
+  <div class="rc rb"><h4>?? BULL_TREND</h4><p>Alcista. Vol ~0.70%/4h. Persistencia ~95%.<br><b>Busca LONG</b>.</p></div>
+  <div class="rc rr"><h4>?? BEAR_TREND</h4><p>Bajista. Vol ~1.50%/4h. Convicci�n m�n 8.<br><b>Cierra LONGs</b>.</p></div>
+  <div class="rc rs"><h4>?? SIDEWAYS</h4><p>Lateral. Vol ~0.66%/4h. Sin tendencia.<br><b>No opera</b>.</p></div>
+  <div class="rc rv"><h4>?? REVERSAL</h4><p>Recuperaci�n. Vol ~1.12%/4h. Transici�n.<br><b>No opera</b>.</p></div>
 </div>
+<div class="hb"><b>Solo BULL y BEAR permiten entradas.</b> GaussianHMM(n=4), 2 a�os datos 4h, 10 reinicios.</div>
 
-<!-- ── Component cards ── -->
-<p class="section-title">componentes del sistema</p>
-<div class="cards-grid">
+<div class="sh">Reglas de riesgo</div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">???</div><div><div class="card-t">Par�metros en config.py</div></div><div class="chv">?</div></div>
+<div class="card-b"><table class="it"><tr><th>Par�metro</th><th>Valor</th><th>Descripci�n</th></tr>
+<tr><td>MAX_TRADE_USD</td><td>$50</td><td>Monto m�ximo por operaci�n</td></tr>
+<tr><td>STOP_LOSS_PCT</td><td>4%</td><td>Fallback si ATR falla</td></tr>
+<tr><td>MAX_DAILY_LOSS_USD</td><td>$30</td><td>L�mite diario ? halt</td></tr>
+<tr><td>MAX_OPEN_POSITIONS</td><td>2</td><td>Posiciones simult�neas</td></tr>
+<tr><td>MIN_SIGNAL_CONVICTION</td><td>8</td><td>Convicci�n m�nima</td></tr>
+<tr><td>STOP_LOSS_PCT_B</td><td>3%</td><td>Stop Grupo B</td></tr>
+<tr><td>TAKE_PROFIT_PCT_B</td><td>15%</td><td>Target Grupo B (5:1)</td></tr>
+<tr><td>ATR_MULT</td><td>1.5</td><td>Multiplicador trailing</td></tr>
+</table></div></div>
 
-  <!-- data.py -->
-  <div class="card blue" onclick="toggleCard(this)">
-    <div class="card-header">
-      <div class="card-icon">🔢</div>
-      <div>
-        <div class="card-title">Datos de mercado</div>
-        <div class="card-file">data.py</div>
-      </div>
-      <div class="card-chevron">▼</div>
-    </div>
-    <div class="card-body">
-      <div class="card-inner">
-        <div class="card-desc">
-          Llama a la API pública de Binance (sin autenticación) y construye el contexto técnico
-          que recibirá Claude. Migrado a velas de 4h para alinearse con el timeframe del HMM.
-        </div>
-        <ul class="step-list">
-          <li><span class="step-num">1</span>GET /api/v3/ticker/24hr → precio actual y cambio 24h</li>
-          <li><span class="step-num">2</span>GET /api/v3/klines?interval=4h&limit=100 → velas OHLCV</li>
-          <li><span class="step-num">3</span>Calcula RSI(14) con Wilder smoothing sobre los closes</li>
-          <li><span class="step-num">4</span>EMA20, EMA50 → determina tendencia (ALCISTA/BAJISTA)</li>
-          <li><span class="step-num">5</span>vol_ratio = volumen actual / MA20 del volumen</li>
-        </ul>
-        <div class="tag-row">
-          <span class="tag">requests</span>
-          <span class="tag">pandas</span>
-          <span class="tag">Binance Public API</span>
-        </div>
-      </div>
-    </div>
-  </div>
+<div class="sh">Componentes del sistema</div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Datos de mercado</div><div class="card-s">data.py</div></div><div class="chv">?</div></div><div class="card-b">Binance Public API. 100 velas 4h. RSI(14), EMA20/50, vol_ratio, EMA cross, RSI recovery/rejection. F&G. Top movers B.<div class="tr"><span class="tg">requests</span><span class="tg">pandas</span><span class="tg">Binance API</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Clasificador HMM</div><div class="card-s">regime.py � models/hmm_*.pkl</div></div><div class="chv">?</div></div><div class="card-b">GaussianHMM(4), 2 a�os 4h. Features: log_ret, vol_20, vol_ratio, RSI_c, EMA50_slope. Cache memoria. Viterbi.<div class="tr"><span class="tg">hmmlearn</span><span class="tg">joblib</span><span class="tg">sklearn</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Motor IA</div><div class="card-s">brain.py</div></div><div class="chv">?</div></div><div class="card-b">3 prompts: <b>An�lisis</b> (Sonnet, cuantitativo), <b>Grupo B</b> (Sonnet, momentum), <b>Veto</b> (Haiku, risk manager). Parseo regex.<div class="tr"><span class="tg">anthropic</span><span class="tg">sonnet-4</span><span class="tg">haiku-4</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">?</div><div><div class="card-t">Ejecutor</div><div class="card-s">executor.py � trades.db</div></div><div class="chv">?</div></div><div class="card-b">�rdenes Binance via ccxt. SL/TP con ATR(14) 1h. SQLite: trades + events. 4 tipos cierre.<div class="tr"><span class="tg">ccxt</span><span class="tg">sqlite3</span><span class="tg">Binance</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">WebSocket + Trailing</div><div class="card-s">main_async.py � binance_ws.py � trailing_stop.py</div></div><div class="chv">?</div></div><div class="card-b">WS: stream.binance.com, miniTicker, reconnect 2s?60s. Trailing: stop ratchet ATR�1.5, persiste en DB.<div class="tr"><span class="tg">websockets</span><span class="tg">asyncio</span><span class="tg">ATR 1h</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Telegram</div><div class="card-s">telegram_alerts.py</div></div><div class="chv">?</div></div><div class="card-b">7 tipos: startup, se�al, ejecuci�n, cierre, resumen, error, daily halt. HTML Bot API.<div class="tr"><span class="tg">requests</span><span class="tg">Bot API</span></div></div></div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Backtest</div><div class="card-s">backtest/</div></div><div class="chv">?</div></div><div class="card-b">downloader, regime_trainer (HMM), simulator (Sharpe, win rate), optimizer (walk-forward), report (HTML).<div class="tr"><span class="tg">hmmlearn</span><span class="tg">pandas</span><span class="tg">numpy</span></div></div></div>
 
-  <!-- regime.py -->
-  <div class="card purple" onclick="toggleCard(this)">
-    <div class="card-header">
-      <div class="card-icon">🎯</div>
-      <div>
-        <div class="card-title">Clasificador de Régimen</div>
-        <div class="card-file">regime.py · models/hmm_*.pkl</div>
-      </div>
-      <div class="card-chevron">▼</div>
-    </div>
-    <div class="card-body">
-      <div class="card-inner">
-        <div class="card-desc">
-          Carga un modelo GaussianHMM pre-entrenado sobre 2 años de datos 4h.
-          Detecta en cuál de los 4 estados estadísticos está el mercado ahora mismo.
-          El modelo se cachea en memoria — no hay I/O de disco en cada ciclo.
-        </div>
-        <ul class="step-list">
-          <li><span class="step-num">1</span>Carga <code>hmm_{SYMBOL}.pkl</code> con joblib (primera vez)</li>
-          <li><span class="step-num">2</span>Computa 5 features: log_return, vol_rolling_20, vol_ratio, RSI centrado, EMA50 slope</li>
-          <li><span class="step-num">3</span>StandardScaler normaliza las features (mismo scaler del entrenamiento)</li>
-          <li><span class="step-num">4</span>model.predict() → secuencia de estados por Viterbi</li>
-          <li><span class="step-num">5</span>Cuenta barras consecutivas en el estado actual, extrae probabilidad de persistencia de la transmat</li>
-        </ul>
-        <div class="regime-mini-grid">
-          <div class="regime-mini rm-bull"><div class="rname">📈 BULL_TREND</div><div class="rdesc">vol 0.70%/4h · EMA slope +0.36%</div></div>
-          <div class="regime-mini rm-bear"><div class="rname">📉 BEAR_TREND</div><div class="rdesc">vol 1.50%/4h · caída pronunciada</div></div>
-          <div class="regime-mini rm-side"><div class="rname">➡️ SIDEWAYS</div><div class="rdesc">vol 0.66%/4h · deriva bajista lenta</div></div>
-          <div class="regime-mini rm-rev"><div class="rname">🔄 REVERSAL</div><div class="rdesc">vol 1.12%/4h · recuperación</div></div>
-        </div>
-        <div class="tag-row">
-          <span class="tag">hmmlearn</span>
-          <span class="tag">GaussianHMM</span>
-          <span class="tag">joblib</span>
-          <span class="tag">sklearn.StandardScaler</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- brain.py -->
-  <div class="card purple" onclick="toggleCard(this)">
-    <div class="card-header">
-      <div class="card-icon">🧠</div>
-      <div>
-        <div class="card-title">Motor de Decisión</div>
-        <div class="card-file">brain.py</div>
-      </div>
-      <div class="card-chevron">▼</div>
-    </div>
-    <div class="card-body">
-      <div class="card-inner">
-        <div class="card-desc">
-          Combina el bloque de régimen con los indicadores técnicos y envía todo a Claude
-          via la Anthropic API. Parsea el texto de respuesta con regex para extraer señales estructuradas.
-        </div>
-        <div class="prompt-preview"><span class="hl">══ RÉGIMEN DE MERCADO (HMM 4h) ══</span>
-
-<span class="hl">BTC/USDT</span> → <span class="val">BULL_TREND</span>
-  Tendencia alcista sostenida, volatilidad baja
-  Duración:     <span class="val">23 barras · 92h</span> consecutivas
-  Persistencia: <span class="val">95.5%</span> probabilidad de continuar
-  Vol del estado: <span class="val">0.697%</span>/4h
-  Sesgo: Favorable para LONG
-
-<span class="comment">--- BTC/USDT ---</span>
-  Precio:     $<span class="val">94,200</span>
-  RSI (14):   <span class="val">61.4</span>
-  EMA20/50:   94100 / 91200 → <span class="val">ALCISTA</span>
-  Volumen 4h: <span class="val">1.08x</span> promedio</div>
-        <div class="tag-row">
-          <span class="tag">anthropic SDK</span>
-          <span class="tag">claude-sonnet-4</span>
-          <span class="tag">regex</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- executor.py -->
-  <div class="card green" onclick="toggleCard(this)">
-    <div class="card-header">
-      <div class="card-icon">⚡</div>
-      <div>
-        <div class="card-title">Ejecutor de Órdenes</div>
-        <div class="card-file">executor.py · trades.db</div>
-      </div>
-      <div class="card-chevron">▼</div>
-    </div>
-    <div class="card-body">
-      <div class="card-inner">
-        <div class="card-desc">
-          Toma las señales accionables de Claude y las convierte en órdenes reales en Binance Testnet.
-          Antes de ejecutar, verifica todas las reglas de riesgo hardcodeadas en config.py.
-          Cada trade queda registrado en SQLite.
-        </div>
-        <ul class="step-list">
-          <li><span class="step-num">1</span>¿señal.accionable AND convicción ≥ 7? → continuar</li>
-          <li><span class="step-num">2</span>¿posiciones abiertas &lt; MAX_OPEN_POSITIONS (2)? → continuar</li>
-          <li><span class="step-num">3</span>¿pérdida_dia &lt; MAX_DAILY_LOSS_USD ($15)? → continuar</li>
-          <li><span class="step-num">4</span>Calcular quantity = MAX_TRADE_USD ($10) / precio_actual</li>
-          <li><span class="step-num">5</span>exchange.create_order(market, buy/sell) via ccxt</li>
-          <li><span class="step-num">6</span>INSERT INTO trades (symbol, entry, stop, target, ...)</li>
-        </ul>
-        <div class="tag-row">
-          <span class="tag">ccxt</span>
-          <span class="tag">sqlite3</span>
-          <span class="tag">Binance Testnet</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- backtest -->
-  <div class="card blue" onclick="toggleCard(this)">
-    <div class="card-header">
-      <div class="card-icon">📊</div>
-      <div>
-        <div class="card-title">Sistema de Backtest</div>
-        <div class="card-file">backtest/ downloader · simulator · regime_trainer</div>
-      </div>
-      <div class="card-chevron">▼</div>
-    </div>
-    <div class="card-body">
-      <div class="card-inner">
-        <div class="card-desc">
-          Infraestructura offline para descargar datos históricos, entrenar el HMM y
-          validar estrategias sobre datos pasados antes de exponer capital real.
-        </div>
-        <ul class="step-list">
-          <li><span class="step-num">1</span><code>downloader.py</code> — descarga 2 años de velas 1h y 4h de Binance (730 días × 4 pares)</li>
-          <li><span class="step-num">2</span><code>regime_trainer.py</code> — entrena GaussianHMM(n=4) con 10 reinicios aleatorios sobre los datos 4h, etiqueta estados post-hoc por estadísticas, guarda modelo en <code>models/</code></li>
-          <li><span class="step-num">3</span><code>simulator.py</code> — simula la estrategia EMA/RSI sobre datos históricos, reporta Sharpe, win rate, drawdown</li>
-          <li><span class="step-num">4</span><code>optimizer.py</code> — grid search sobre parámetros con validación walk-forward 80/20</li>
-          <li><span class="step-num">5</span><code>report.py</code> — genera HTML con resultados visuales</li>
-        </ul>
-        <div class="tag-row">
-          <span class="tag">hmmlearn</span>
-          <span class="tag">pandas</span>
-          <span class="tag">numpy</span>
-          <span class="tag">walk-forward</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- telegram -->
-  <div class="card amber" onclick="toggleCard(this)">
-    <div class="card-header">
-      <div class="card-icon">📱</div>
-      <div>
-        <div class="card-title">Alertas Telegram</div>
-        <div class="card-file">telegram_alerts.py</div>
-      </div>
-      <div class="card-chevron">▼</div>
-    </div>
-    <div class="card-body">
-      <div class="card-inner">
-        <div class="card-desc">
-          Wrapper sobre la API HTTP de Telegram Bot. Envía notificaciones formateadas
-          en HTML a un chat específico para cada evento del agente.
-        </div>
-        <ul class="step-list">
-          <li><span class="step-num">1</span><b>Startup</b> — al arrancar, confirma pares monitoreados e intervalo</li>
-          <li><span class="step-num">2</span><b>Señal</b> — por cada par: dirección, convicción, entrada, stop, target, tesis</li>
-          <li><span class="step-num">3</span><b>Ejecución</b> — confirma la orden colocada con order ID y cantidad</li>
-          <li><span class="step-num">4</span><b>Resumen 4h</b> — régimen actual de cada par + señales + balance USDT (silent)</li>
-          <li><span class="step-num">5</span><b>Error</b> — cualquier excepción no capturada llega al celular</li>
-        </ul>
-        <div class="tag-row">
-          <span class="tag">requests</span>
-          <span class="tag">Telegram Bot API</span>
-          <span class="tag">HTML parse_mode</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<!-- ── Tech stack ── -->
-<p class="section-title">stack tecnológico</p>
-<div class="tech-grid">
-  <div class="tech-item">
-    <div class="t-icon">🐍</div>
-    <div class="t-name">Python 3.12</div>
-    <div class="t-role">runtime principal</div>
-  </div>
-  <div class="tech-item">
-    <div class="t-icon">🧠</div>
-    <div class="t-name">Claude Sonnet</div>
-    <div class="t-role">motor de decisión</div>
-  </div>
-  <div class="tech-item">
-    <div class="t-icon">🎯</div>
-    <div class="t-name">hmmlearn</div>
-    <div class="t-role">GaussianHMM</div>
-  </div>
-  <div class="tech-item">
-    <div class="t-icon">📈</div>
-    <div class="t-name">ccxt</div>
-    <div class="t-role">exchange unificado</div>
-  </div>
-  <div class="tech-item">
-    <div class="t-icon">🗄</div>
-    <div class="t-name">SQLite</div>
-    <div class="t-role">registro de trades</div>
-  </div>
-  <div class="tech-item">
-    <div class="t-icon">🐼</div>
-    <div class="t-name">pandas / numpy</div>
-    <div class="t-role">procesamiento</div>
-  </div>
-  <div class="tech-item">
-    <div class="t-icon">📡</div>
-    <div class="t-name">Binance API</div>
-    <div class="t-role">datos + ejecución</div>
-  </div>
-  <div class="tech-item">
-    <div class="t-icon">📱</div>
-    <div class="t-name">Telegram Bot</div>
-    <div class="t-role">notificaciones</div>
-  </div>
-</div>
+<div class="sh">Tipos de eventos</div>
+<div class="card"><div class="card-h" onclick="toggle(this)"><div class="card-i">??</div><div><div class="card-t">Eventos en DB</div></div><div class="chv">?</div></div>
+<div class="card-b"><table class="it"><tr><th>Tipo</th><th>Nivel</th><th>Cu�ndo</th></tr>
+<tr><td>STARTUP</td><td>INFO</td><td>Arranque</td></tr>
+<tr><td>ENTRY_CHECK</td><td>INFO</td><td>Par no calific�</td></tr>
+<tr><td>CLAUDE_VETO</td><td>WARNING</td><td>Vetado por Haiku</td></tr>
+<tr><td>CLAUDE_SIGNAL</td><td>WARNING</td><td>Se�al aprobada</td></tr>
+<tr><td>TRADE_OPEN</td><td>INFO</td><td>Posici�n abierta</td></tr>
+<tr><td>TRADE_CLOSE</td><td>SUCCESS/ERROR</td><td>Posici�n cerrada</td></tr>
+<tr><td>REGIME_CHANGE</td><td>INFO</td><td>R�gimen cambi�</td></tr>
+<tr><td>REGIME_EXIT</td><td>WARNING</td><td>Cierre por r�gimen</td></tr>
+<tr><td>MOVER_DETECTED</td><td>WARNING</td><td>Mover Grupo B</td></tr>
+<tr><td>GROUP_B_SCAN</td><td>INFO</td><td>Scan sin movers</td></tr>
+<tr><td>DAILY_HALT</td><td>ERROR</td><td>L�mite diario</td></tr>
+</table></div></div>
 
 </main>
-
-<script>
-  function toggleCard(card) {
-    card.classList.toggle('open');
-  }
-
-  function pulse(node, color) {
-    const box = node.querySelector('.node-box');
-    box.classList.add('active');
-    setTimeout(() => box.classList.remove('active'), 1200);
-  }
-
-  // Auto-open first card on load
-  document.addEventListener('DOMContentLoaded', () => {
-    // slight stagger open for visual interest on first load — none by default
-  });
-</script>
+<script>function toggle(el){el.closest('.card').classList.toggle('open')}</script>
 </body>
 </html>
