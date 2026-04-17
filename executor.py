@@ -259,6 +259,41 @@ def parse_price(value: str) -> float:
     return float(nums[0]) if nums else 0.0
 
 
+# ── Correlación ───────────────────────────────────────────────
+
+def _has_correlated_position(symbol: str, direction: str) -> bool:
+    """
+    Verifica si ya hay una posición abierta en un par correlacionado
+    con la misma dirección. Ej: LONG BTC abierto bloquea LONG ETH.
+    Direcciones opuestas se permiten (hedge implícito).
+    """
+    from config import CORRELATED_GROUPS
+
+    # Buscar el grupo de correlación del símbolo
+    my_group = None
+    for group in CORRELATED_GROUPS:
+        if symbol in group:
+            my_group = group
+            break
+    if not my_group:
+        return False
+
+    # Buscar posiciones abiertas en el mismo grupo con misma dirección
+    correlated_peers = my_group - {symbol}
+    conn = sqlite3.connect(DB_PATH)
+    for peer in correlated_peers:
+        row = conn.execute(
+            "SELECT direction FROM trades WHERE status='OPEN' AND symbol=? LIMIT 1",
+            (peer,)
+        ).fetchone()
+        if row and row[0] == direction:
+            conn.close()
+            print(f"  [executor] Correlación: {peer} ya tiene {direction} abierto")
+            return True
+    conn.close()
+    return False
+
+
 # ── Ejecución principal ───────────────────────────────────────
 
 def _calc_sl_tp(symbol: str, direction: str, entry: float,
@@ -307,6 +342,11 @@ def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> d
     # Verificar que no haya posición abierta en este par específico
     if has_open_position(symbol):
         print(f"  [executor] Ya hay posición abierta en {symbol} — saltando")
+        return None
+
+    # Verificar correlación — no abrir misma dirección en pares correlacionados
+    if _has_correlated_position(symbol, direction):
+        print(f"  [executor] Posición correlacionada ya abierta ({symbol} {direction}) — saltando")
         return None
 
     # Precio actual
@@ -419,33 +459,38 @@ def check_open_positions(market_data: dict) -> list[dict]:
     """
     Revisa todas las posiciones OPEN contra el precio actual.
     Cierra las que tocaron stop-loss o take-profit.
-    Retorna lista de trades cerrados en este ciclo.
+
+    Si el trailing stop está activo (trailing_stop_price > 0),
+    NO chequea TP fijo — deja que el trailing maneje la salida por arriba.
+    El SL estático sigue como red de seguridad.
     """
     conn   = sqlite3.connect(DB_PATH)
     trades = conn.execute(
-        "SELECT id, symbol, direction, entry_price, stop_loss, take_profit, quantity FROM trades WHERE status='OPEN'"
+        "SELECT id, symbol, direction, entry_price, stop_loss, take_profit, quantity, "
+        "COALESCE(trailing_stop_price, 0) FROM trades WHERE status='OPEN'"
     ).fetchall()
     conn.close()
 
     closed = []
     for trade in trades:
-        trade_id, symbol, direction, entry, stop, target, qty = trade
+        trade_id, symbol, direction, entry, stop, target, qty, trailing_price = trade
         price = market_data.get(symbol, {}).get('price', 0)
         if not price:
             continue
 
         result     = None
         exit_price = None
+        trailing_active = trailing_price > 0
 
         if direction == 'LONG':
             if price <= stop:
                 result, exit_price = 'LOSS', stop
-            elif price >= target:
+            elif price >= target and not trailing_active:
                 result, exit_price = 'WIN', target
         else:  # SHORT
             if price >= stop:
                 result, exit_price = 'LOSS', stop
-            elif price <= target:
+            elif price <= target and not trailing_active:
                 result, exit_price = 'WIN', target
 
         if result:

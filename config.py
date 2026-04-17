@@ -31,8 +31,14 @@ SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 MAX_TRADE_USD         = float(os.getenv("MAX_TRADE_USD",      "50"))  # por operación en USD
 STOP_LOSS_PCT         = 0.04                                           # 4% fallback si ATR falla
 MAX_DAILY_LOSS_USD    = float(os.getenv("MAX_DAILY_LOSS_USD", "30"))  # ~3 pérdidas ATR × $50
-MAX_OPEN_POSITIONS    = 2                                              # máx posiciones simultáneas
+MAX_OPEN_POSITIONS    = int(os.getenv("MAX_OPEN_POSITIONS",    "3"))   # máx posiciones simultáneas
 MIN_SIGNAL_CONVICTION = 8                                              # convicción mínima Claude
+
+# --- Correlación — pares que cuentan como la misma apuesta direccional ---
+# Si ya hay un LONG BTC y llega un LONG ETH, se bloquea (misma dirección, alta correlación)
+CORRELATED_GROUPS = [
+    {"BTC/USDT", "ETH/USDT"},  # correlación > 0.85 históricamente
+]
 
 # --- API interna ---
 AGENT_API_TOKEN = os.getenv("AGENT_API_TOKEN", "")   # protege /api/close

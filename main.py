@@ -537,10 +537,13 @@ def run_cycle():
                     continue
 
                 # Paso 3: señal aprobada — armar para ejecución
+                conviction = market_data_module.calc_conviction(
+                    {**cond, 'symbol': sym}, mkt, regimes.get(sym, {})
+                )
                 sig = {
                     "symbol":      sym,
                     "direction":   cond["direction"],
-                    "conviction":  9,
+                    "conviction":  conviction,
                     "actionable":  True,
                     "thesis":      f"[{cond.get('signal_type')}] {', '.join(cond['reasons'])}",
                     "group":       "A",
@@ -550,11 +553,11 @@ def run_cycle():
                 }
                 signals.append(sig)
                 exc.log_event("CLAUDE_SIGNAL",
-                              f"{sym} → {cond['direction']} [{cond.get('signal_type')}] aprobado",
+                              f"{sym} → {cond['direction']} [{cond.get('signal_type')}] aprobado (conv {conviction}/10)",
                               symbol=sym, group="A", level="WARNING",
                               details={**snapshot,
                                        "qualified":   True,
-                                       "conviction":  9,
+                                       "conviction":  conviction,
                                        "conditions":  cond["reasons"],
                                        "veto_reason": veto["reason"]})
 

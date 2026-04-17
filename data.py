@@ -264,6 +264,51 @@ def check_entry_conditions(symbol: str, market_data: dict, regime_info: dict) ->
     }
 
 
+def calc_conviction(conditions: dict, market_data: dict, regime_info: dict) -> int:
+    """
+    Calcula convicción dinámica (7-10) basada en la calidad del setup mecánico.
+
+    Factores:
+      - Tipo de señal: EMA_CROSS/RSI_RECOVERY/RSI_REJECTION = +1, ALIGNMENT = +0
+      - Persistencia del régimen: > 12 barras = +1
+      - RSI en zona ideal (no en bordes): +1
+      - Volumen fuerte (> 1.5x): +1
+
+    Base = 7 (mínimo para ejecutar). Máximo = 10.
+    """
+    if not conditions.get('qualified'):
+        return 0
+
+    score = 7  # base
+
+    # +1 por señal fuerte (EMA_CROSS, RSI_RECOVERY, RSI_REJECTION)
+    sig_type = conditions.get('signal_type', 'ALIGNMENT')
+    if sig_type in ('EMA_CROSS', 'RSI_RECOVERY', 'RSI_REJECTION'):
+        score += 1
+
+    # +1 por régimen persistente (> 12 barras 4h = ~48h)
+    hours = regime_info.get('hours_in_regime', 0) if regime_info else 0
+    if hours > 48:
+        score += 1
+
+    # +1 por RSI en zona ideal (no en bordes del rango)
+    symbol = conditions.get('symbol', '')
+    d = market_data.get(symbol, {}) if symbol else {}
+    rsi = float(d.get('rsi', 50))
+    direction = conditions.get('direction')
+    if direction == 'LONG'  and 45 <= rsi <= 58:
+        score += 1
+    elif direction == 'SHORT' and 40 <= rsi <= 55:
+        score += 1
+
+    # +1 por volumen fuerte
+    vol = float(d.get('vol_ratio', 1.0))
+    if vol >= 1.5:
+        score += 1
+
+    return min(score, 10)
+
+
 def format_market_context(market_data: dict, fng: dict) -> str:
     lines = [
         f"=== CONTEXTO DE MERCADO — {datetime.now().strftime('%Y-%m-%d %H:%M')} ===",

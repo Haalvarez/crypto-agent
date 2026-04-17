@@ -585,3 +585,18 @@ PORT=8080
 # Async
 ASYNC_ENABLED=false
 ```
+
+
+### Correlación entre pares
+BTC/USDT y ETH/USDT están marcados como correlacionados. Si ya hay un LONG BTC abierto, no se permite abrir LONG ETH (misma dirección = misma apuesta). Direcciones opuestas sí se permiten (hedge implícito).
+
+### Convicción dinámica (Grupo A)
+La convicción ya no es fija en 9. Se calcula dinámicamente (7-10):
+- Base: 7
+- +1 por señal fuerte (EMA_CROSS, RSI_RECOVERY, RSI_REJECTION)
+- +1 por régimen persistente (>48h)
+- +1 por RSI en zona ideal
+- +1 por volumen >1.5x
+
+### TP fijo vs Trailing Stop
+Cuando el trailing stop está activo (trailing_stop_price > 0 en DB), el TP fijo estático NO se chequea. El trailing maneja la salida por arriba, permitiendo capturar movimientos más grandes. El SL estático se mantiene como red de seguridad.
