@@ -249,6 +249,22 @@
   }
   .close-btn:active { background: rgba(239,68,68,.25); }
 
+  /* ── Nav bar ── */
+  .nav-bar {
+    display: flex; gap: 6px; padding: 10px 16px;
+    background: rgba(8,11,20,.92); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; justify-content: center;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .nav-link {
+    padding: 5px 14px; border-radius: 8px; font-size: .75rem; font-weight: 600;
+    border: 1px solid var(--border); background: var(--card2);
+    color: var(--dim); cursor: pointer; text-decoration: none; transition: all .15s;
+  }
+  .nav-link:hover { color: var(--text); border-color: var(--purple); }
+  .nav-link.active { color: var(--text); border-color: var(--purple); background: rgba(139,92,246,.15); }
+
   /* ── Confirm modal ── */
   .confirm-overlay {
     position: fixed; inset: 0; z-index: 400;
@@ -289,6 +305,12 @@
 </head>
 <body>
 
+<div class="nav-bar">
+  <a class="nav-link active" href="dashboard.html">📊 Dashboard</a>
+  <a class="nav-link" href="timeline.html">📋 Timeline</a>
+  <a class="nav-link" href="system_explainer.html">🏗 Arquitectura</a>
+</div>
+
 <!-- Confirm close overlay -->
 <div class="confirm-overlay" id="confirm-overlay" style="display:none">
   <div class="confirm-box">
@@ -327,6 +349,7 @@
 </div>
 
 <div id="offline-banner">Sin conexión al agente</div>
+
 
 <div class="page">
 
@@ -465,25 +488,41 @@ function fngColor(v) {
   return '#94a3b8';
 }
 
+// Parsea ISO tratando timestamps sin timezone como UTC
+function parseUTC(iso) {
+  if (iso && !iso.endsWith('Z') && !iso.includes('+') && !/\d{2}:\d{2}$/.test(iso.slice(-6))) {
+    return new Date(iso + 'Z');
+  }
+  return new Date(iso);
+}
+
 // Convierte ISO a hora Argentina (UTC-3)
 function toAR(isoStr) {
-  return new Date(isoStr).toLocaleString('es-AR', {
+  return parseUTC(isoStr).toLocaleString('es-AR', {
     timeZone: 'America/Argentina/Buenos_Aires',
     day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit',
   });
 }
 
 function timeSince(isoStr) {
-  const diff = (Date.now() - new Date(isoStr)) / 1000;
-  if (diff < 60)   return `hace ${Math.round(diff)}s`;
-  if (diff < 3600) return `hace ${Math.round(diff/60)}m`;
-  return `hace ${Math.round(diff/3600)}h`;
+  const diff = (Date.now() - parseUTC(isoStr).getTime()) / 1000;
+  if (diff < 0)      return 'recién';
+  if (diff < 60)     return `hace ${Math.round(diff)}s`;
+  if (diff < 3600)   return `hace ${Math.round(diff/60)} min`;
+  if (diff < 86400) {
+    const h = Math.floor(diff / 3600);
+    const m = Math.round((diff % 3600) / 60);
+    return m > 0 ? `hace ${h}h ${m}m` : `hace ${h}h`;
+  }
+  const d = Math.floor(diff / 86400);
+  const h = Math.round((diff % 86400) / 3600);
+  return h > 0 ? `hace ${d}d ${h}h` : `hace ${d}d`;
 }
 
 function nextAnalysis(sym) {
   const last = lastAnalysisTimes[sym];
   if (!last) return { text: 'Analizando ahora', ready: true };
-  const elapsedMin = (Date.now() - new Date(last)) / 60000;
+  const elapsedMin = (Date.now() - parseUTC(last).getTime()) / 60000;
   const remaining  = Math.max(0, analysisIntervalMin - elapsedMin);
   if (remaining < 1) return { text: 'Listo para analizar', ready: true };
   const h = Math.floor(remaining / 60);
@@ -749,7 +788,7 @@ async function loadState() {
     lastAnalysisTimes  = d.last_analysis_times || {};
     analysisIntervalMin = d.analysis_interval_minutes || 240;
 
-    const secsSince = (Date.now() - new Date(d.last_update)) / 1000;
+    const secsSince = (Date.now() - parseUTC(d.last_update).getTime()) / 1000;
     dot.className = secsSince < 600 ? 'status-dot' : 'status-dot stale';
     document.getElementById('offline-banner').style.display = 'none';
     document.getElementById('last-update').textContent = timeSince(d.last_update);
