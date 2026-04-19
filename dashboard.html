@@ -791,7 +791,7 @@ async function loadState() {
     const secsSince = (Date.now() - parseUTC(d.last_update).getTime()) / 1000;
     dot.className = secsSince < 600 ? 'status-dot' : 'status-dot stale';
     document.getElementById('offline-banner').style.display = 'none';
-    document.getElementById('last-update').textContent = timeSince(d.last_update);
+    document.getElementById('last-update').textContent = toAR(d.last_update) + ' (' + timeSince(d.last_update) + ')';
 
     // Cycle info
     document.getElementById('ci-monitor').textContent = d.cycle        || '—';
