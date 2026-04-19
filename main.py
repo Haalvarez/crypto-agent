@@ -402,7 +402,6 @@ def run_cycle():
         log.info("Datos de mercado OK")
     except Exception as e:
         log.error(f"Error datos: {e}")
-        tg.send_error("fetch datos", str(e))
         return
 
     # 3. Monitor posiciones abiertas — cerrar las que tocaron stop/target
@@ -563,7 +562,6 @@ def run_cycle():
 
             except Exception as e:
                 log.error(f"Error análisis A {sym}: {e}")
-                tg.send_error(f"análisis A {sym}", str(e))
 
     # 6b. Análisis Claude Grupo B — movers sin posición abierta
     if group_b_symbols and not state["halted"]:
@@ -626,21 +624,12 @@ def run_cycle():
             else:
                 log.warning(f"No ejecutado: {signal['symbol']}")
 
-    actionable = [s for s in signals if s.get("actionable")]
-    if actionable:
-        for sig in actionable:
-            tg.send_signal(sig, mkt)
-
     # 8. Actualizar contadores y estado
     _update_pair_stats(signals, mkt, regimes)
 
     # 9. Dashboard state
     balance = exc.get_balance_usdt()
     write_dashboard_state(mkt, fng, regimes, signals, balance)
-
-    # 10. Resumen Telegram
-    if state["analysis_cycles"] % 3 == 0 and (signals or closed_trades):
-        tg.send_cycle_summary(signals, fng, tokens, balance, regimes)
 
     state["cycles_run"] += 1
     log.info(f"── Ciclo #{cycle_num} completado ──\n")
@@ -683,11 +672,9 @@ def main():
             run_cycle()
         except KeyboardInterrupt:
             log.info("Detenido manualmente.")
-            tg.send("🛑 Agente detenido manualmente.")
             break
         except Exception as e:
             log.error(f"Error loop: {e}")
-            tg.send_error("loop principal", str(e))
 
         log.info(f"Próximo ciclo en {config.MONITOR_INTERVAL_MINUTES} min...")
         time.sleep(config.MONITOR_INTERVAL_MINUTES * 60)
