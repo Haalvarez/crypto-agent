@@ -39,29 +39,36 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute('''
         CREATE TABLE IF NOT EXISTS trades (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol      TEXT,
-            direction   TEXT,
-            conviction  INTEGER,
-            entry_price REAL,
-            stop_loss   REAL,
-            take_profit REAL,
-            quantity    REAL,
-            usd_value   REAL,
-            order_id    TEXT,
-            status      TEXT DEFAULT 'OPEN',
-            exit_price  REAL,
-            pnl_usd     REAL,
-            opened_at   TEXT,
-            closed_at   TEXT,
-            group_name  TEXT DEFAULT 'A'
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol               TEXT,
+            direction            TEXT,
+            conviction           INTEGER,
+            entry_price          REAL,
+            stop_loss            REAL,
+            take_profit          REAL,
+            quantity             REAL,
+            usd_value            REAL,
+            order_id             TEXT,
+            status               TEXT DEFAULT 'OPEN',
+            exit_price           REAL,
+            pnl_usd              REAL,
+            opened_at            TEXT,
+            closed_at            TEXT,
+            group_name           TEXT DEFAULT 'A',
+            trailing_stop_price  REAL,
+            atr_value            REAL
         )
     ''')
-    # Migración: agregar group_name si no existe (DB preexistente)
-    try:
-        conn.execute("ALTER TABLE trades ADD COLUMN group_name TEXT DEFAULT 'A'")
-    except Exception:
-        pass
+    # Migraciones para DBs preexistentes — idempotentes
+    for col, typ in [
+        ("group_name",          "TEXT DEFAULT 'A'"),
+        ("trailing_stop_price", "REAL"),
+        ("atr_value",           "REAL"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {typ}")
+        except Exception:
+            pass
 
     conn.execute('''
         CREATE TABLE IF NOT EXISTS events (
@@ -460,37 +467,35 @@ def check_open_positions(market_data: dict) -> list[dict]:
     Revisa todas las posiciones OPEN contra el precio actual.
     Cierra las que tocaron stop-loss o take-profit.
 
-    Si el trailing stop está activo (trailing_stop_price > 0),
-    NO chequea TP fijo — deja que el trailing maneje la salida por arriba.
-    El SL estático sigue como red de seguridad.
+    SL fijo y TP fijo siempre activos.
+    El trailing stop (main_async) es una capa adicional — no deshabilita el TP.
     """
     conn   = sqlite3.connect(DB_PATH)
     trades = conn.execute(
-        "SELECT id, symbol, direction, entry_price, stop_loss, take_profit, quantity, "
-        "COALESCE(trailing_stop_price, 0) FROM trades WHERE status='OPEN'"
+        "SELECT id, symbol, direction, entry_price, stop_loss, take_profit, quantity "
+        "FROM trades WHERE status='OPEN'"
     ).fetchall()
     conn.close()
 
     closed = []
     for trade in trades:
-        trade_id, symbol, direction, entry, stop, target, qty, trailing_price = trade
+        trade_id, symbol, direction, entry, stop, target, qty = trade
         price = market_data.get(symbol, {}).get('price', 0)
         if not price:
             continue
 
         result     = None
         exit_price = None
-        trailing_active = trailing_price > 0
 
         if direction == 'LONG':
             if price <= stop:
                 result, exit_price = 'LOSS', stop
-            elif price >= target and not trailing_active:
+            elif price >= target:
                 result, exit_price = 'WIN', target
         else:  # SHORT
             if price >= stop:
                 result, exit_price = 'LOSS', stop
-            elif price <= target and not trailing_active:
+            elif price <= target:
                 result, exit_price = 'WIN', target
 
         if result:
