@@ -55,6 +55,7 @@ def init_db():
             opened_at            TEXT,
             closed_at            TEXT,
             group_name           TEXT DEFAULT 'A',
+            strategy             TEXT DEFAULT 'TREND',
             trailing_stop_price  REAL,
             atr_value            REAL
         )
@@ -62,6 +63,7 @@ def init_db():
     # Migraciones para DBs preexistentes — idempotentes
     for col, typ in [
         ("group_name",          "TEXT DEFAULT 'A'"),
+        ("strategy",             "TEXT DEFAULT 'TREND'"),
         ("trailing_stop_price", "REAL"),
         ("atr_value",           "REAL"),
     ]:
@@ -69,6 +71,17 @@ def init_db():
             conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {typ}")
         except Exception:
             pass
+
+    # Backfill: trades viejos sin strategy → marcar según group_name
+    try:
+        conn.execute(
+            "UPDATE trades SET strategy='MOMENTUM' WHERE strategy IS NULL AND group_name='B'"
+        )
+        conn.execute(
+            "UPDATE trades SET strategy='TREND' WHERE strategy IS NULL"
+        )
+    except Exception:
+        pass
 
     conn.execute('''
         CREATE TABLE IF NOT EXISTS events (
@@ -138,18 +151,66 @@ def save_trade(trade: dict) -> int:
     cur = conn.execute('''
         INSERT INTO trades
         (symbol, direction, conviction, entry_price, stop_loss, take_profit,
-         quantity, usd_value, order_id, status, opened_at, group_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)
+         quantity, usd_value, order_id, status, opened_at, group_name, strategy)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?)
     ''', (
         trade['symbol'], trade['direction'], trade['conviction'],
         trade['entry_price'], trade['stop_loss'], trade['take_profit'],
         trade['quantity'], trade['usd_value'], trade['order_id'],
-        datetime.now().isoformat(), trade.get('group_name', 'A')
+        datetime.now().isoformat(),
+        trade.get('group_name', 'A'),
+        trade.get('strategy',   'TREND'),
     ))
     trade_id = cur.lastrowid
     conn.commit()
     conn.close()
     return trade_id
+
+
+def get_strategy_stats() -> dict:
+    """
+    Retorna estadísticas agregadas por estrategia: {strategy: {win_rate, profit_factor, ...}}
+    Solo cuenta trades cerrados (WIN/LOSS).
+    """
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT COALESCE(strategy,'TREND'), status, pnl_usd FROM trades WHERE status IN ('WIN','LOSS')"
+    ).fetchall()
+    open_rows = conn.execute(
+        "SELECT COALESCE(strategy,'TREND') FROM trades WHERE status='OPEN'"
+    ).fetchall()
+    conn.close()
+
+    by_strat: dict = {}
+    for strat, status, pnl in rows:
+        s = by_strat.setdefault(strat, {"wins": 0, "losses": 0, "pnl_total": 0.0,
+                                        "gross_win": 0.0, "gross_loss": 0.0, "open": 0})
+        if status == 'WIN':
+            s["wins"]      += 1
+            s["gross_win"] += float(pnl or 0)
+        else:
+            s["losses"]     += 1
+            s["gross_loss"] += abs(float(pnl or 0))
+        s["pnl_total"] += float(pnl or 0)
+
+    for strat, in open_rows:
+        s = by_strat.setdefault(strat, {"wins": 0, "losses": 0, "pnl_total": 0.0,
+                                        "gross_win": 0.0, "gross_loss": 0.0, "open": 0})
+        s["open"] += 1
+
+    # Computar métricas derivadas
+    for strat, s in by_strat.items():
+        total = s["wins"] + s["losses"]
+        s["total_closed"]  = total
+        s["win_rate"]      = round(s["wins"] / total * 100, 1) if total else 0
+        s["profit_factor"] = round(s["gross_win"] / s["gross_loss"], 2) if s["gross_loss"] else None
+        s["avg_win"]       = round(s["gross_win"]  / s["wins"],   2) if s["wins"]   else 0
+        s["avg_loss"]      = round(s["gross_loss"] / s["losses"], 2) if s["losses"] else 0
+        s["pnl_total"]     = round(s["pnl_total"], 2)
+        s["gross_win"]     = round(s["gross_win"],  2)
+        s["gross_loss"]    = round(s["gross_loss"], 2)
+
+    return by_strat
 
 
 def get_open_trades() -> list:
@@ -408,6 +469,8 @@ def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> d
             'quantity':    float(quantity),
             'usd_value':   usd_value,
             'order_id':    order_id,
+            'group_name':  signal.get('group_name', 'A'),
+            'strategy':    signal.get('strategy',   'TREND'),
         }
         trade_id = save_trade(trade_data)
 
@@ -520,7 +583,7 @@ def get_all_trades_stats() -> dict:
     conn  = sqlite3.connect(DB_PATH)
     rows  = conn.execute("SELECT status, pnl_usd FROM trades").fetchall()
     open_ = conn.execute(
-        "SELECT id, symbol, direction, entry_price, stop_loss, take_profit, opened_at, usd_value, quantity FROM trades WHERE status='OPEN'"
+        "SELECT id, symbol, direction, entry_price, stop_loss, take_profit, opened_at, usd_value, quantity, COALESCE(strategy,'TREND') FROM trades WHERE status='OPEN'"
     ).fetchall()
     conn.close()
 
@@ -540,6 +603,7 @@ def get_all_trades_stats() -> dict:
                 "id":          t[0], "symbol": t[1], "direction": t[2],
                 "entry_price": t[3], "stop_loss": t[4], "take_profit": t[5],
                 "opened_at":   t[6], "usd_value": t[7], "quantity": t[8],
+                "strategy":    t[9],
             }
             for t in open_
         ],

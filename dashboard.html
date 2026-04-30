@@ -211,6 +211,34 @@
   .ts-red   { color: var(--red); }
   .ts-amber { color: var(--amber); }
 
+  /* ── Performance por estrategia ── */
+  .strat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px; margin-bottom: 10px;
+  }
+  .strat-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .strat-name { font-size: 1rem; font-weight: 700; letter-spacing: .04em; }
+  .strat-tag-trend    { color: var(--blue);   }
+  .strat-tag-grid     { color: var(--purple); }
+  .strat-tag-momentum { color: var(--amber);  }
+  .strat-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px; text-align: center;
+  }
+  .strat-item .strat-val { font-size: .95rem; font-weight: 600; }
+  .strat-item .strat-lbl { font-size: .58rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+
+  /* Strategy badge en posiciones */
+  .pos-strat {
+    display: inline-block; font-size: .58rem; font-weight: 700;
+    padding: 2px 8px; border-radius: 4px; letter-spacing: .05em;
+    background: var(--card2); border: 1px solid var(--border);
+    margin-left: 6px; vertical-align: middle;
+  }
+
   /* ── Fear & Greed ── */
   .fng-bar-wrap {
     background: var(--card); border: 1px solid var(--border);
@@ -445,6 +473,12 @@
       <div class="ts-val ts-amber" id="ts-open-count">—</div>
       <div class="ts-lbl">Abiertas ahora</div>
     </div>
+  </div>
+
+  <!-- Performance por estrategia -->
+  <div class="section-label" style="margin-top:14px">performance por estrategia</div>
+  <div id="strategy-perf">
+    <div style="color:var(--muted); font-size:.8rem; text-align:center; padding:12px">Sin trades cerrados todavía</div>
   </div>
 
 </div>
@@ -703,10 +737,14 @@ function renderPositions(positions) {
     const pnlUsdStr = pnlUsd !== null
       ? `${pnlSign}$${Math.abs(pnlUsd).toFixed(2)}` : '—';
 
+    const strat = p.strategy || 'TREND';
+    const stratCls = strat === 'GRID' ? 'strat-tag-grid'
+                    : strat === 'MOMENTUM' ? 'strat-tag-momentum'
+                    : 'strat-tag-trend';
     html += `
     <div class="position-card">
       <div class="pos-header">
-        <span class="pos-sym">${p.symbol}</span>
+        <span class="pos-sym">${p.symbol} <span class="pos-strat ${stratCls}">${strat}</span></span>
         <span class="pos-dir ${dirCls}">${dirIcon} ${p.direction}</span>
       </div>
       <div class="pos-grid">
@@ -751,6 +789,68 @@ function renderPositions(positions) {
   }
   container.innerHTML = html;
 }
+
+function renderStrategyStats(stats) {
+  const container = document.getElementById('strategy-perf');
+  const entries = Object.entries(stats || {});
+  if (!entries.length) {
+    container.innerHTML = '<div style="color:var(--muted); font-size:.8rem; text-align:center; padding:12px">Sin trades todavía</div>';
+    return;
+  }
+  let html = '';
+  for (const [name, s] of entries) {
+    const cls = name === 'GRID' ? 'strat-tag-grid'
+              : name === 'MOMENTUM' ? 'strat-tag-momentum'
+              : 'strat-tag-trend';
+    const pnlCls = (s.pnl_total || 0) >= 0 ? 'ts-green' : 'ts-red';
+    const pnlSign = (s.pnl_total || 0) >= 0 ? '+' : '';
+    const pf = s.profit_factor !== null && s.profit_factor !== undefined ? s.profit_factor : '—';
+    const pfCls = (typeof s.profit_factor === 'number' && s.profit_factor >= 1.5) ? 'ts-green'
+                : (typeof s.profit_factor === 'number' && s.profit_factor < 1) ? 'ts-red'
+                : 'ts-amber';
+    html += `
+    <div class="strat-card">
+      <div class="strat-head">
+        <div class="strat-name ${cls}">${name}</div>
+        <div style="font-size:.7rem; color:var(--muted)">
+          ${s.total_closed || 0} cerr · ${s.open || 0} abier
+        </div>
+      </div>
+      <div class="strat-grid">
+        <div class="strat-item">
+          <div class="strat-val ts-green">${s.wins || 0}</div>
+          <div class="strat-lbl">Wins</div>
+        </div>
+        <div class="strat-item">
+          <div class="strat-val ts-red">${s.losses || 0}</div>
+          <div class="strat-lbl">Losses</div>
+        </div>
+        <div class="strat-item">
+          <div class="strat-val ts-amber">${s.win_rate || 0}%</div>
+          <div class="strat-lbl">Win Rate</div>
+        </div>
+        <div class="strat-item">
+          <div class="strat-val ${pfCls}">${pf}</div>
+          <div class="strat-lbl" onclick="showTip('Profit Factor','Suma de ganancias dividido suma de pérdidas. >1.5 = sistema rentable. <1 = pierde dinero.')">PF ⓘ</div>
+        </div>
+        <div class="strat-item">
+          <div class="strat-val">$${s.avg_win || 0}</div>
+          <div class="strat-lbl">Avg Win</div>
+        </div>
+        <div class="strat-item">
+          <div class="strat-val">$${s.avg_loss || 0}</div>
+          <div class="strat-lbl">Avg Loss</div>
+        </div>
+        <div class="strat-item" style="grid-column: span 3; padding-top: 6px; border-top: 1px solid var(--border)">
+          <div class="strat-val ${pnlCls}" style="font-size:1.1rem">${pnlSign}$${s.pnl_total || 0}</div>
+          <div class="strat-lbl">PnL Total</div>
+        </div>
+      </div>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
 
 function renderTrades(ts) {
   if (!ts) return;
@@ -804,6 +904,7 @@ async function loadState() {
     renderPairs(d.pair_stats, d.regimes);
     renderPositions(d.open_trades || []);
     renderTrades(d.trade_summary);
+    renderStrategyStats(d.strategy_stats || {});
 
   } catch (e) {
     dot.className = 'status-dot offline';

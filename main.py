@@ -249,6 +249,7 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
             "win_rate":     trade_stats["win_rate"],
             "total_pnl":    trade_stats["total_pnl"],
         },
+        "strategy_stats":   exc.get_strategy_stats(),
         "regimes": {
             sym: {
                 "regime":         info.get("regime", "UNKNOWN"),
@@ -547,6 +548,7 @@ def run_cycle():
                     "thesis":      f"[{cond.get('signal_type')}] {', '.join(cond['reasons'])}",
                     "group":       "A",
                     "group_name":  "A",
+                    "strategy":    "TREND",
                     "take_profit": "",
                     "stop_loss":   "",
                 }
@@ -581,6 +583,8 @@ def run_cycle():
                 for s in free_b:
                     state["last_analysis"][s] = datetime.now()
                 for sig in signals_b:
+                    sig["strategy"]   = "MOMENTUM"
+                    sig["group_name"] = "B"
                     exc.log_event("CLAUDE_SIGNAL",
                                   f"[B] {sig['symbol']} → {sig['direction']} (conv {sig.get('conviction',0)}/10)",
                                   symbol=sig["symbol"], group="B",
