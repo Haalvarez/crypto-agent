@@ -56,3 +56,10 @@ TAKE_PROFIT_PCT_B      = float(os.getenv("TAKE_PROFIT_PCT_B","0.15"))
 # --- Intervalos ---
 MONITOR_INTERVAL_MINUTES  = int(os.getenv("MONITOR_INTERVAL_MINUTES",  "15"))   # SL/TP check
 ANALYSIS_INTERVAL_MINUTES = int(os.getenv("ANALYSIS_INTERVAL_MINUTES", "240"))  # régimen + Claude
+
+# --- Grid Trading (estrategia paralela mean-reversion) ---
+GRID_ENABLED        = os.getenv("GRID_ENABLED", "true").lower() == "true"
+GRID_SYMBOL         = os.getenv("GRID_SYMBOL", "BTC/USDT")
+GRID_N_LEVELS       = int(os.getenv("GRID_N_LEVELS",     "8"))   # niveles totales (geométrico)
+GRID_LOOKBACK_DAYS  = int(os.getenv("GRID_LOOKBACK_DAYS", "30")) # ventana para detectar rango
+GRID_STEP_PCT       = float(os.getenv("GRID_STEP_PCT", "0.025")) # 2.5% entre niveles

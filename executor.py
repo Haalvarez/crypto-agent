@@ -167,6 +167,22 @@ def save_trade(trade: dict) -> int:
     return trade_id
 
 
+def get_open_trades_by_strategy(strategy: str) -> list[dict]:
+    """Retorna posiciones OPEN filtradas por estrategia."""
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT id, symbol, direction, entry_price, stop_loss, take_profit, quantity "
+        "FROM trades WHERE status='OPEN' AND COALESCE(strategy,'TREND')=?",
+        (strategy,)
+    ).fetchall()
+    conn.close()
+    return [{
+        "id": r[0], "symbol": r[1], "direction": r[2],
+        "entry_price": r[3], "stop_loss": r[4], "take_profit": r[5],
+        "quantity": r[6],
+    } for r in rows]
+
+
 def get_strategy_stats() -> dict:
     """
     Retorna estadísticas agregadas por estrategia: {strategy: {win_rate, profit_factor, ...}}
@@ -365,12 +381,19 @@ def _has_correlated_position(symbol: str, direction: str) -> bool:
 # ── Ejecución principal ───────────────────────────────────────
 
 def _calc_sl_tp(symbol: str, direction: str, entry: float,
-                stop_pct: float, take_profit_signal: float) -> tuple[float, float]:
+                stop_pct: float, take_profit_signal: float,
+                sl_override: float = None, tp_override: float = None) -> tuple[float, float]:
     """
     Calcula SL basado en ATR(14) 4h (mismo timeframe que la señal de entrada).
     Fallback a porcentaje fijo si ATR falla.
     TP: usa el sugerido por Claude si es válido; si no, 2× el riesgo ATR (R:R 1:2).
+
+    Si sl_override y tp_override se pasan (ej: estrategia Grid), se usan tal cual.
     """
+    if sl_override and tp_override:
+        print(f"  [executor] SL/TP explícitos → SL={sl_override:.4f} TP={tp_override:.4f}")
+        return round(sl_override, 8), round(tp_override, 8)
+
     from strategies.trailing_stop import _calc_atr_sync, ATR_MULT, ATR_INTERVAL_ENTRY
 
     atr = _calc_atr_sync(symbol, period=14, interval=ATR_INTERVAL_ENTRY)
@@ -453,9 +476,11 @@ def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> d
         order_id    = str(order['id'])
         usd_value   = float(quantity) * entry_price
 
-        # SL/TP basado en ATR (se calcula con el entry_price real de la orden)
+        # SL/TP basado en ATR (o overrides explícitos si vienen en la señal)
         stop_loss, take_profit = _calc_sl_tp(
-            symbol, direction, entry_price, stop_pct, take_profit_signal
+            symbol, direction, entry_price, stop_pct, take_profit_signal,
+            sl_override=signal.get('stop_loss_price'),
+            tp_override=signal.get('take_profit_price'),
         )
 
         # Guardar en DB

@@ -17,6 +17,7 @@ import brain
 import regime as regime_module
 import telegram_alerts as tg
 import executor as exc
+from strategies.grid_trader import GridTrader
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +46,12 @@ state = {
                                 "last_conviction": 0, "last_regime": None, "last_price": 0,
                                 "last_rsi": 0, "last_trend": None}
                           for sym in config.SYMBOLS},
+    "grid":              GridTrader(
+        symbol         = config.GRID_SYMBOL,
+        n_levels       = config.GRID_N_LEVELS,
+        lookback_days  = config.GRID_LOOKBACK_DAYS,
+        grid_step_pct  = config.GRID_STEP_PCT,
+    ) if config.GRID_ENABLED else None,
 }
 
 
@@ -250,6 +257,7 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
             "total_pnl":    trade_stats["total_pnl"],
         },
         "strategy_stats":   exc.get_strategy_stats(),
+        "grid_status":      state["grid"].status() if state["grid"] else None,
         "regimes": {
             sym: {
                 "regime":         info.get("regime", "UNKNOWN"),
@@ -596,6 +604,27 @@ def run_cycle():
                 signals += signals_b
             except Exception as e:
                 log.error(f"Error brain B: {e}")
+
+    # 6c. Grid Trading — mean reversion paralelo (sin LLM, mecánico)
+    if state["grid"] and not state["halted"]:
+        try:
+            grid_sym   = config.GRID_SYMBOL
+            grid_price = mkt.get(grid_sym, {}).get("price", 0)
+            if grid_price:
+                open_grid = exc.get_open_trades_by_strategy("GRID")
+                grid_sig  = state["grid"].get_buy_signal(grid_price, open_grid)
+                if grid_sig:
+                    log.info(f"  [GRID] {grid_sym} @ ${grid_price:,.2f} → {grid_sig['thesis']}")
+                    exc.log_event("GRID_SIGNAL", grid_sig["thesis"],
+                                  symbol=grid_sym, group="A", level="WARNING",
+                                  details={"price":      grid_price,
+                                           "level":      grid_sig["grid_level"],
+                                           "next":       grid_sig["grid_next"],
+                                           "stop_loss":  grid_sig["stop_loss_price"],
+                                           "take_profit": grid_sig["take_profit_price"]})
+                    signals.append(grid_sig)
+        except Exception as e:
+            log.error(f"Error grid: {e}")
 
     # 7. Ejecutar señales accionables
     fng_value = fng.get("value", 50)
