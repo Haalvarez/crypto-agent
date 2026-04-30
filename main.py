@@ -279,6 +279,141 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
     _upload_to_gist(content)
 
 
+# ── Equity curve por estrategia ──────────────────────────────
+
+def build_equity_curve(since_str: str, capital: float) -> dict:
+    """
+    Construye la curva de equity diaria para cada estrategia + Buy&Hold BTC.
+
+    Para cada estrategia: equity[día N] = capital + Σ pnl_realizado_hasta_N + pnl_no_realizado_actual_si_es_ultimo_dia.
+    Para BTC Hold: capital convertido a BTC el día `since_str` y valuado al precio diario.
+    """
+    import sqlite3
+    from datetime import datetime, timedelta, date as dtdate
+    import requests as _req
+
+    since = datetime.fromisoformat(since_str)
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    days  = []
+    d = since.replace(hour=0, minute=0, second=0, microsecond=0)
+    while d <= today:
+        days.append(d)
+        d += timedelta(days=1)
+
+    # Trades cerrados desde `since` agrupados por estrategia
+    conn = sqlite3.connect(exc.DB_PATH)
+    rows = conn.execute(
+        """SELECT COALESCE(strategy,'TREND'), pnl_usd, closed_at
+           FROM trades
+           WHERE status IN ('WIN','LOSS') AND closed_at >= ?""",
+        (since.isoformat(),)
+    ).fetchall()
+    open_rows = conn.execute(
+        """SELECT COALESCE(strategy,'TREND'), entry_price, quantity, direction, symbol
+           FROM trades WHERE status='OPEN'"""
+    ).fetchall()
+    conn.close()
+
+    strategies = ['TREND', 'GRID', 'MOMENTUM']
+    closed_by_strat = {s: [] for s in strategies}
+    for strat, pnl, closed_at in rows:
+        if strat in closed_by_strat:
+            closed_by_strat[strat].append({
+                'pnl':   float(pnl or 0),
+                'date':  datetime.fromisoformat(closed_at).date(),
+            })
+
+    # PnL no realizado actual (último día) por estrategia
+    open_pnl_by_strat = {s: 0.0 for s in strategies}
+    if open_rows:
+        # Necesito precios actuales para los símbolos abiertos
+        symbols_open = {r[4] for r in open_rows}
+        prices = {}
+        for sym in symbols_open:
+            try:
+                r = _req.get(
+                    f"https://api.binance.com/api/v3/ticker/price",
+                    params={"symbol": sym.replace("/", "")}, timeout=5
+                ).json()
+                prices[sym] = float(r.get('price', 0))
+            except Exception:
+                prices[sym] = 0
+        for strat, entry, qty, direction, sym in open_rows:
+            if strat in open_pnl_by_strat:
+                p = prices.get(sym, 0)
+                if p and entry and qty:
+                    if direction == 'LONG':
+                        open_pnl_by_strat[strat] += (p - entry) * qty
+                    else:
+                        open_pnl_by_strat[strat] += (entry - p) * qty
+
+    # Construir curvas diarias
+    result = {
+        'since':      since_str,
+        'capital':    capital,
+        'days':       [dt.date().isoformat() for dt in days],
+        'strategies': {},
+    }
+
+    for strat in strategies:
+        cum_pnl = 0.0
+        points  = []
+        # Ordenar trades por fecha
+        sorted_trades = sorted(closed_by_strat[strat], key=lambda x: x['date'])
+        idx = 0
+        for dt in days:
+            d = dt.date()
+            while idx < len(sorted_trades) and sorted_trades[idx]['date'] <= d:
+                cum_pnl += sorted_trades[idx]['pnl']
+                idx += 1
+            points.append(round(capital + cum_pnl, 2))
+        # Sumar PnL no realizado al último punto
+        if points and open_pnl_by_strat[strat]:
+            points[-1] = round(points[-1] + open_pnl_by_strat[strat], 2)
+        result['strategies'][strat] = {
+            'points':         points,
+            'closed_pnl':     round(cum_pnl, 2),
+            'unrealized_pnl': round(open_pnl_by_strat[strat], 2),
+            'trades_count':   len(closed_by_strat[strat]),
+        }
+
+    # Buy & Hold BTC
+    try:
+        start_ms = int(since.timestamp() * 1000)
+        klines = _req.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": "BTCUSDT", "interval": "1d",
+                    "startTime": start_ms, "limit": len(days) + 5},
+            timeout=10
+        ).json()
+        if klines and not isinstance(klines, dict):
+            btc_open  = float(klines[0][1])  # precio apertura del primer día
+            btc_qty   = capital / btc_open
+            # Mapear fecha → close
+            by_date = {}
+            for k in klines:
+                kd = datetime.utcfromtimestamp(k[0] / 1000).date()
+                by_date[kd] = float(k[4])  # close
+            last_close = btc_open
+            btc_points = []
+            for dt in days:
+                d = dt.date()
+                if d in by_date:
+                    last_close = by_date[d]
+                btc_points.append(round(btc_qty * last_close, 2))
+            result['strategies']['BTC_HOLD'] = {
+                'points':       btc_points,
+                'btc_start':    round(btc_open, 2),
+                'btc_current':  round(last_close, 2),
+                'trades_count': 1,
+            }
+    except Exception as e:
+        log.warning(f"[equity] BTC hold fail: {e}")
+        result['strategies']['BTC_HOLD'] = {'points': [], 'error': str(e)}
+
+    return result
+
+
 # ── Servidor HTTP / API ──────────────────────────────────────
 
 STATIC_TYPES = {'.html': 'text/html', '.json': 'application/json',
@@ -307,6 +442,9 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == '/api/events':
             self._handle_events()
             return
+        if path == '/api/equity_curve':
+            self._handle_equity_curve()
+            return
 
         fpath = os.path.join(WEBROOT, path.lstrip('/'))
         if os.path.isfile(fpath):
@@ -324,6 +462,22 @@ class APIHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def _handle_equity_curve(self):
+        """
+        Curva de equity diaria por estrategia desde una fecha.
+        Query params: ?since=2026-05-01&capital=1000
+        """
+        params = dict(p.split('=') for p in self.path.split('?')[1].split('&') if '=' in p) \
+                 if '?' in self.path else {}
+        since_str = params.get('since', '2026-05-01')
+        capital   = float(params.get('capital', '1000'))
+        try:
+            data = build_equity_curve(since_str, capital)
+            self._json(200, data)
+        except Exception as e:
+            log.error(f"[equity_curve] {e}")
+            self._json(500, {'error': str(e)})
 
     def _handle_events(self):
         params      = dict(p.split('=') for p in self.path.split('?')[1].split('&') if '=' in p) \

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carrera de estrategias — Crypto Agent</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:      #080b14;
+    --card:    #0f1424;
+    --card2:   #161b2e;
+    --border:  #1e2640;
+    --text:    #e2e8f0;
+    --muted:   #64748b;
+    --dim:     #94a3b8;
+    --trend:    #3b82f6;
+    --grid:     #8b5cf6;
+    --momentum: #f59e0b;
+    --btc:      #f97316;
+    --green:   #10b981;
+    --red:     #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh; padding: 16px;
+  }
+  .topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 12px;
+    margin-bottom: 16px;
+  }
+  .topbar h1 { font-size: 1.05rem; font-weight: 700; }
+  .topbar a { color: var(--muted); font-size: .8rem; text-decoration: none; }
+  .topbar a:hover { color: var(--text); }
+
+  .controls {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px; margin-bottom: 16px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px;
+  }
+  .ctl label {
+    display: block; font-size: .65rem; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--muted); margin-bottom: 4px;
+  }
+  .ctl input {
+    width: 100%; padding: 8px 10px;
+    background: var(--card2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-size: .95rem;
+    font-family: inherit;
+  }
+  .ctl input:focus { border-color: var(--trend); outline: none; }
+  .ctl-toggle {
+    display: flex; align-items: center; gap: 6px; padding-top: 18px;
+    font-size: .8rem; color: var(--dim); cursor: pointer; user-select: none;
+  }
+  .ctl-toggle input { width: 16px; height: 16px; accent-color: var(--trend); }
+
+  .chart-wrap {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
+    height: 380px; position: relative;
+  }
+  .chart-bars {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
+    height: 280px; position: relative;
+  }
+  .section-label {
+    font-size: .7rem; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 4px 0 8px 4px;
+  }
+
+  .legend {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px; margin-bottom: 16px;
+  }
+  .leg-item {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+  }
+  .leg-name {
+    font-size: .7rem; text-transform: uppercase; letter-spacing: .04em;
+    margin-bottom: 4px;
+  }
+  .leg-name .dot {
+    display: inline-block; width: 9px; height: 9px;
+    border-radius: 50%; margin-right: 6px; vertical-align: middle;
+  }
+  .leg-equity { font-size: 1.15rem; font-weight: 700; }
+  .leg-pct { font-size: .8rem; margin-left: 6px; }
+  .leg-meta { font-size: .65rem; color: var(--muted); margin-top: 3px; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+
+  .disclaimer {
+    background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.3);
+    border-radius: 8px; padding: 10px 14px; font-size: .75rem;
+    color: var(--dim); margin-bottom: 14px; line-height: 1.5;
+  }
+  .disclaimer strong { color: var(--momentum); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>🏁 Carrera de estrategias</h1>
+    <a href="/dashboard.html">← Dashboard</a>
+  </div>
+
+  <div class="controls">
+    <div class="ctl">
+      <label for="since">Fecha de inicio</label>
+      <input id="since" type="date" value="2026-05-01">
+    </div>
+    <div class="ctl">
+      <label for="capital">Capital inicial (USD)</label>
+      <input id="capital" type="number" min="100" step="100" value="1000">
+    </div>
+    <div class="ctl ctl-toggle">
+      <input id="proj" type="checkbox">
+      <label for="proj" style="margin:0">Mostrar proyección lineal</label>
+    </div>
+    <div class="ctl ctl-toggle">
+      <input id="autorefresh" type="checkbox" checked>
+      <label for="autorefresh" style="margin:0">Auto-refresh 60s</label>
+    </div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="section-label">curva temporal — equity diaria</div>
+  <div class="chart-wrap">
+    <canvas id="lineChart"></canvas>
+  </div>
+
+  <div class="section-label">comparativa actual</div>
+  <div class="chart-bars">
+    <canvas id="barChart"></canvas>
+  </div>
+
+  <div class="disclaimer" id="disclaimer">
+    <strong>⚠ Sesgos a tener en cuenta:</strong>
+    Las curvas usan capital virtual de $1,000 por estrategia (fair compare), pero los trades reales fueron con $50 por operación (sin compounding).
+    El último punto de cada estrategia incluye PnL no realizado de posiciones abiertas — puede oscilar hasta que cierren.
+    BTC Hold parte del precio de apertura del 1/5/26.
+    <strong>La proyección lineal NO es predicción</strong>: extrapola los últimos 7 días y solo sirve para ver si la pendiente actual es positiva o negativa.
+  </div>
+
+<script>
+const COLORS = {
+  TREND:    '#3b82f6',
+  GRID:     '#8b5cf6',
+  MOMENTUM: '#f59e0b',
+  BTC_HOLD: '#f97316',
+};
+const LABELS = {
+  TREND:    'TREND (Claude+HMM)',
+  GRID:     'GRID (mean-reversion)',
+  MOMENTUM: 'MOMENTUM (Group B)',
+  BTC_HOLD: 'BUY & HOLD BTC',
+};
+
+let lineChart = null, barChart = null;
+let refreshTimer = null;
+const REFRESH_MS = 60000;
+
+const $ = id => document.getElementById(id);
+
+async function load() {
+  const since   = $('since').value;
+  const capital = $('capital').value;
+  const url = `/api/equity_curve?since=${since}&capital=${capital}`;
+
+  let data;
+  try {
+    data = await (await fetch(url)).json();
+  } catch (e) {
+    console.error(e);
+    return;
+  }
+
+  renderLegend(data);
+  renderLineChart(data);
+  renderBarChart(data);
+}
+
+function renderLegend(data) {
+  const cap = data.capital;
+  const html = Object.entries(data.strategies).map(([name, s]) => {
+    const last  = s.points && s.points.length ? s.points[s.points.length - 1] : cap;
+    const pct   = ((last - cap) / cap) * 100;
+    const cls   = pct >= 0 ? 'pos' : 'neg';
+    const sign  = pct >= 0 ? '+' : '';
+    const trades = s.trades_count !== undefined ? `${s.trades_count} trades` : '';
+    const unreal = s.unrealized_pnl ? ` · flot ${s.unrealized_pnl >= 0 ? '+' : ''}$${s.unrealized_pnl}` : '';
+    return `
+    <div class="leg-item">
+      <div class="leg-name"><span class="dot" style="background:${COLORS[name]}"></span>${LABELS[name]}</div>
+      <div>
+        <span class="leg-equity">$${last.toLocaleString('en-US',{maximumFractionDigits:2})}</span>
+        <span class="leg-pct ${cls}">${sign}${pct.toFixed(2)}%</span>
+      </div>
+      <div class="leg-meta">${trades}${unreal}</div>
+    </div>`;
+  }).join('');
+  $('legend').innerHTML = html;
+}
+
+function linearProjection(points, n=7) {
+  if (points.length < 2) return points;
+  const recent = points.slice(-Math.min(n, points.length));
+  const xs = recent.map((_, i) => i);
+  const ys = recent;
+  const n2 = xs.length;
+  const sumX = xs.reduce((a,b)=>a+b, 0);
+  const sumY = ys.reduce((a,b)=>a+b, 0);
+  const sumXY = xs.reduce((s,x,i)=>s + x*ys[i], 0);
+  const sumX2 = xs.reduce((s,x)=>s + x*x, 0);
+  const slope = (n2*sumXY - sumX*sumY) / (n2*sumX2 - sumX*sumX);
+  const intercept = (sumY - slope*sumX) / n2;
+  // Proyectar 14 días hacia adelante
+  const future = [];
+  for (let i = n2; i < n2 + 14; i++) {
+    future.push(slope * i + intercept);
+  }
+  return future;
+}
+
+function renderLineChart(data) {
+  const showProj = $('proj').checked;
+  const labels = data.days;
+  const futureLabels = [];
+  if (showProj) {
+    const lastDate = new Date(labels[labels.length - 1]);
+    for (let i = 1; i <= 14; i++) {
+      const d = new Date(lastDate);
+      d.setDate(d.getDate() + i);
+      futureLabels.push(d.toISOString().slice(0, 10));
+    }
+  }
+
+  const datasets = [];
+  for (const [name, s] of Object.entries(data.strategies)) {
+    if (!s.points || !s.points.length) continue;
+    datasets.push({
+      label: LABELS[name],
+      data: showProj ? [...s.points, ...new Array(14).fill(null)] : s.points,
+      borderColor: COLORS[name],
+      backgroundColor: COLORS[name] + '22',
+      tension: 0.2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      borderWidth: 2,
+    });
+    if (showProj) {
+      const proj = linearProjection(s.points);
+      const projData = [...new Array(s.points.length - 1).fill(null), s.points[s.points.length - 1], ...proj];
+      datasets.push({
+        label: LABELS[name] + ' (proy.)',
+        data: projData,
+        borderColor: COLORS[name],
+        borderDash: [5, 5],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+      });
+    }
+  }
+
+  const cfg = {
+    type: 'line',
+    data: {
+      labels: showProj ? [...labels, ...futureLabels] : labels,
+      datasets,
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: '#94a3b8', font: { size: 11 }, filter: i => !i.text.includes('(proy.)') },
+        },
+        tooltip: {
+          backgroundColor: '#0f1424',
+          borderColor: '#1e2640', borderWidth: 1,
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: $${ctx.parsed.y?.toFixed(2) ?? '—'}`,
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 12 },
+             grid: { color: '#1e2640' } },
+        y: { ticks: { color: '#64748b', callback: v => '$' + v },
+             grid: { color: '#1e2640' } },
+      },
+    },
+  };
+
+  if (lineChart) lineChart.destroy();
+  lineChart = new Chart($('lineChart'), cfg);
+}
+
+function renderBarChart(data) {
+  const cap = data.capital;
+  const names  = Object.keys(data.strategies);
+  const values = names.map(n => {
+    const pts = data.strategies[n].points;
+    return pts && pts.length ? pts[pts.length - 1] : cap;
+  });
+  const pcts = values.map(v => ((v - cap) / cap) * 100);
+
+  const cfg = {
+    type: 'bar',
+    data: {
+      labels: names.map(n => LABELS[n]),
+      datasets: [{
+        label: 'Equity actual',
+        data: values,
+        backgroundColor: names.map(n => COLORS[n] + 'cc'),
+        borderColor:    names.map(n => COLORS[n]),
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const idx = ctx.dataIndex;
+              return `$${values[idx].toFixed(2)} (${pcts[idx] >= 0 ? '+' : ''}${pcts[idx].toFixed(2)}%)`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { color: '#64748b', callback: v => '$' + v },
+             grid: { color: '#1e2640' },
+             suggestedMin: cap * 0.9 },
+        y: { ticks: { color: '#cbd5e1', font: { size: 11 } },
+             grid: { display: false } },
+      },
+    },
+  };
+
+  if (barChart) barChart.destroy();
+  barChart = new Chart($('barChart'), cfg);
+}
+
+['since', 'capital', 'proj'].forEach(id => $(id).addEventListener('change', load));
+$('autorefresh').addEventListener('change', () => {
+  clearTimeout(refreshTimer);
+  if ($('autorefresh').checked) scheduleRefresh();
+});
+
+function scheduleRefresh() {
+  refreshTimer = setTimeout(async () => {
+    await load();
+    if ($('autorefresh').checked) scheduleRefresh();
+  }, REFRESH_MS);
+}
+
+load();
+scheduleRefresh();
+</script>
+</body>
+</html>
