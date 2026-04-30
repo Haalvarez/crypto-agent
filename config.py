@@ -31,8 +31,13 @@ SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 MAX_TRADE_USD         = float(os.getenv("MAX_TRADE_USD",      "50"))  # por operación en USD
 STOP_LOSS_PCT         = 0.04                                           # 4% fallback si ATR falla
 MAX_DAILY_LOSS_USD    = float(os.getenv("MAX_DAILY_LOSS_USD", "30"))  # ~3 pérdidas ATR × $50
-MAX_OPEN_POSITIONS    = int(os.getenv("MAX_OPEN_POSITIONS",    "3"))   # máx posiciones simultáneas
+MAX_OPEN_POSITIONS    = int(os.getenv("MAX_OPEN_POSITIONS",    "6"))   # cap global (suma de cuotas)
 MIN_SIGNAL_CONVICTION = 8                                              # convicción mínima Claude
+
+# --- Cuotas por estrategia (independientes, no compiten entre sí) ---
+MAX_OPEN_TREND = int(os.getenv("MAX_OPEN_TREND", "2"))   # TREND (Claude + HMM)
+MAX_OPEN_GRID  = int(os.getenv("MAX_OPEN_GRID",  "3"))   # GRID  (uno por símbolo)
+# MOMENTUM ya está en GROUP_B_MAX_POSITIONS más abajo
 
 # --- Correlación — pares que cuentan como la misma apuesta direccional ---
 # Si ya hay un LONG BTC y llega un LONG ETH, se bloquea (misma dirección, alta correlación)
@@ -59,7 +64,7 @@ ANALYSIS_INTERVAL_MINUTES = int(os.getenv("ANALYSIS_INTERVAL_MINUTES", "240"))  
 
 # --- Grid Trading (estrategia paralela mean-reversion) ---
 GRID_ENABLED        = os.getenv("GRID_ENABLED", "true").lower() == "true"
-GRID_SYMBOL         = os.getenv("GRID_SYMBOL", "BTC/USDT")
+GRID_SYMBOLS        = [s.strip() for s in os.getenv("GRID_SYMBOLS", "BTC/USDT,ETH/USDT,SOL/USDT").split(",")]
 GRID_N_LEVELS       = int(os.getenv("GRID_N_LEVELS",     "8"))   # niveles totales (geométrico)
 GRID_LOOKBACK_DAYS  = int(os.getenv("GRID_LOOKBACK_DAYS", "30")) # ventana para detectar rango
 GRID_STEP_PCT       = float(os.getenv("GRID_STEP_PCT", "0.025")) # 2.5% entre niveles

@@ -46,12 +46,15 @@ state = {
                                 "last_conviction": 0, "last_regime": None, "last_price": 0,
                                 "last_rsi": 0, "last_trend": None}
                           for sym in config.SYMBOLS},
-    "grid":              GridTrader(
-        symbol         = config.GRID_SYMBOL,
-        n_levels       = config.GRID_N_LEVELS,
-        lookback_days  = config.GRID_LOOKBACK_DAYS,
-        grid_step_pct  = config.GRID_STEP_PCT,
-    ) if config.GRID_ENABLED else None,
+    "grids":             {
+        sym: GridTrader(
+            symbol         = sym,
+            n_levels       = config.GRID_N_LEVELS,
+            lookback_days  = config.GRID_LOOKBACK_DAYS,
+            grid_step_pct  = config.GRID_STEP_PCT,
+        )
+        for sym in config.GRID_SYMBOLS
+    } if config.GRID_ENABLED else {},
 }
 
 
@@ -257,7 +260,7 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
             "total_pnl":    trade_stats["total_pnl"],
         },
         "strategy_stats":   exc.get_strategy_stats(),
-        "grid_status":      state["grid"].status() if state["grid"] else None,
+        "grid_status":      {sym: gt.status() for sym, gt in state["grids"].items()},
         "regimes": {
             sym: {
                 "regime":         info.get("regime", "UNKNOWN"),
@@ -479,15 +482,24 @@ def run_cycle():
     tokens  = 0
 
     # 6a. Análisis Grupo A — filtro mecánico + veto Claude (Haiku)
-    free_a  = [s for s in config.SYMBOLS if not exc.has_open_position(s)]
-    due_a   = [s for s in free_a if needs_analysis(s)]
-    blocked = [s for s in config.SYMBOLS if exc.has_open_position(s)]
-    if blocked:
-        log.info(f"  Skip análisis (posición abierta): {', '.join(blocked)}")
+    open_trend_n = len(exc.get_open_trades_by_strategy("TREND"))
+    if open_trend_n >= config.MAX_OPEN_TREND:
+        log.info(f"  [TREND] cuota llena ({open_trend_n}/{config.MAX_OPEN_TREND}) — sin análisis Group A")
+        due_a = []
+    else:
+        free_a  = [s for s in config.SYMBOLS if not exc.has_open_position(s)]
+        due_a   = [s for s in free_a if needs_analysis(s)]
+        blocked = [s for s in config.SYMBOLS if exc.has_open_position(s)]
+        if blocked:
+            log.info(f"  Skip análisis (posición abierta): {', '.join(blocked)}")
 
     if due_a and not state["halted"]:
+        trend_added = 0
         for sym in due_a:
             state["last_analysis"][sym] = datetime.now()
+            if open_trend_n + trend_added >= config.MAX_OPEN_TREND:
+                log.info(f"  [TREND] cuota alcanzada en este ciclo — saltando {sym}")
+                continue
             try:
                 # Paso 1: filtro mecánico (sin llamada a API)
                 cond = market_data_module.check_entry_conditions(
@@ -561,6 +573,7 @@ def run_cycle():
                     "stop_loss":   "",
                 }
                 signals.append(sig)
+                trend_added += 1
                 exc.log_event("CLAUDE_SIGNAL",
                               f"{sym} → {cond['direction']} [{cond.get('signal_type')}] aprobado (conv {conviction}/10)",
                               symbol=sym, group="A", level="WARNING",
@@ -605,24 +618,39 @@ def run_cycle():
             except Exception as e:
                 log.error(f"Error brain B: {e}")
 
-    # 6c. Grid Trading — mean reversion paralelo (sin LLM, mecánico)
-    if state["grid"] and not state["halted"]:
+    # 6c. Grid Trading — mean reversion paralelo (sin LLM, mecánico, multi-símbolo)
+    if state["grids"] and not state["halted"]:
         try:
-            grid_sym   = config.GRID_SYMBOL
-            grid_price = mkt.get(grid_sym, {}).get("price", 0)
-            if grid_price:
-                open_grid = exc.get_open_trades_by_strategy("GRID")
-                grid_sig  = state["grid"].get_buy_signal(grid_price, open_grid)
-                if grid_sig:
-                    log.info(f"  [GRID] {grid_sym} @ ${grid_price:,.2f} → {grid_sig['thesis']}")
-                    exc.log_event("GRID_SIGNAL", grid_sig["thesis"],
-                                  symbol=grid_sym, group="A", level="WARNING",
-                                  details={"price":      grid_price,
-                                           "level":      grid_sig["grid_level"],
-                                           "next":       grid_sig["grid_next"],
-                                           "stop_loss":  grid_sig["stop_loss_price"],
-                                           "take_profit": grid_sig["take_profit_price"]})
-                    signals.append(grid_sig)
+            open_grid    = exc.get_open_trades_by_strategy("GRID")
+            grid_open_n  = len(open_grid)
+            grid_quota   = config.MAX_OPEN_GRID
+
+            if grid_open_n >= grid_quota:
+                log.info(f"  [GRID] cuota llena ({grid_open_n}/{grid_quota}) — sin nuevas entradas")
+            else:
+                # Símbolos que YA tienen un grid abierto — los salteamos
+                grid_open_syms = {t["symbol"] for t in open_grid}
+
+                for sym, gt in state["grids"].items():
+                    if grid_open_n >= grid_quota:
+                        break
+                    if sym in grid_open_syms:
+                        continue
+                    grid_price = mkt.get(sym, {}).get("price", 0)
+                    if not grid_price:
+                        continue
+                    grid_sig = gt.get_buy_signal(grid_price, open_grid)
+                    if grid_sig:
+                        log.info(f"  [GRID] {sym} @ ${grid_price:,.4f} → {grid_sig['thesis']}")
+                        exc.log_event("GRID_SIGNAL", grid_sig["thesis"],
+                                      symbol=sym, group="A", level="WARNING",
+                                      details={"price":       grid_price,
+                                               "level":       grid_sig["grid_level"],
+                                               "next":        grid_sig["grid_next"],
+                                               "stop_loss":   grid_sig["stop_loss_price"],
+                                               "take_profit": grid_sig["take_profit_price"]})
+                        signals.append(grid_sig)
+                        grid_open_n += 1
         except Exception as e:
             log.error(f"Error grid: {e}")
 
