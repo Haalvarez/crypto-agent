@@ -758,17 +758,38 @@ def run_cycle():
                 conviction = market_data_module.calc_conviction(
                     {**cond, 'symbol': sym}, mkt, regimes.get(sym, {})
                 )
+                regime_info = regimes.get(sym, {})
                 sig = {
-                    "symbol":      sym,
-                    "direction":   cond["direction"],
-                    "conviction":  conviction,
-                    "actionable":  True,
-                    "thesis":      f"[{cond.get('signal_type')}] {', '.join(cond['reasons'])}",
-                    "group":       "A",
-                    "group_name":  "A",
-                    "strategy":    "TREND",
-                    "take_profit": "",
-                    "stop_loss":   "",
+                    "symbol":          sym,
+                    "direction":       cond["direction"],
+                    "conviction":      conviction,
+                    "actionable":      True,
+                    "thesis":          f"[{cond.get('signal_type')}] {', '.join(cond['reasons'])}",
+                    "group":           "A",
+                    "group_name":      "A",
+                    "strategy":        "TREND",
+                    "signal_type":     cond.get("signal_type"),
+                    "regime_at_entry": regime_info.get("regime"),
+                    "atr_at_entry":    None,
+                    "take_profit":     "",
+                    "stop_loss":       "",
+                    "entry_context": {
+                        "ema20":          d.get("ema20"),
+                        "ema50":          d.get("ema50"),
+                        "rsi":            d.get("rsi"),
+                        "vol_ratio":      d.get("vol_ratio"),
+                        "change_4h":      d.get("change_4h"),
+                        "change_24h":     d.get("change_24h"),
+                        "trend":          d.get("trend"),
+                        "fng_index":      fng.get("value"),
+                        "regime":         regime_info.get("regime"),
+                        "regime_prob":    regime_info.get("persist_prob"),
+                        "regime_hours":   regime_info.get("hours_in_regime"),
+                        "signal_type":    cond.get("signal_type"),
+                        "conditions":     cond.get("reasons"),
+                        "conviction":     conviction,
+                        "veto_reason":    veto.get("reason", "")[:200],
+                    },
                 }
                 signals.append(sig)
                 trend_added += 1
@@ -802,8 +823,21 @@ def run_cycle():
                 for s in free_b:
                     state["last_analysis"][s] = datetime.now()
                 for sig in signals_b:
-                    sig["strategy"]   = "MOMENTUM"
-                    sig["group_name"] = "B"
+                    sig["strategy"]        = "MOMENTUM"
+                    sig["group_name"]      = "B"
+                    sig["signal_type"]     = "MOMENTUM_MOVER"
+                    sig["regime_at_entry"] = None
+                    sig["atr_at_entry"]    = None
+                    bm = mkt.get(sig["symbol"], {})
+                    sig["entry_context"] = {
+                        "change_pct_24h": bm.get("change_24h"),
+                        "vol_ratio":      bm.get("vol_ratio"),
+                        "rsi":            bm.get("rsi"),
+                        "price":          bm.get("price"),
+                        "fng_index":      fng.get("value"),
+                        "conviction":     sig.get("conviction"),
+                        "thesis":         sig.get("thesis", "")[:200],
+                    }
                     exc.log_event("CLAUDE_SIGNAL",
                                   f"[B] {sig['symbol']} → {sig['direction']} (conv {sig.get('conviction',0)}/10)",
                                   symbol=sig["symbol"], group="B",

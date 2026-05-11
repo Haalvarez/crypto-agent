@@ -57,7 +57,11 @@ def init_db():
             group_name           TEXT DEFAULT 'A',
             strategy             TEXT DEFAULT 'TREND',
             trailing_stop_price  REAL,
-            atr_value            REAL
+            atr_value            REAL,
+            entry_context        TEXT,
+            atr_at_entry         REAL,
+            regime_at_entry      TEXT,
+            signal_type          TEXT
         )
     ''')
     # Migraciones para DBs preexistentes — idempotentes
@@ -66,6 +70,10 @@ def init_db():
         ("strategy",             "TEXT DEFAULT 'TREND'"),
         ("trailing_stop_price", "REAL"),
         ("atr_value",           "REAL"),
+        ("entry_context",       "TEXT"),
+        ("atr_at_entry",        "REAL"),
+        ("regime_at_entry",     "TEXT"),
+        ("signal_type",         "TEXT"),
     ]:
         try:
             conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {typ}")
@@ -151,8 +159,9 @@ def save_trade(trade: dict) -> int:
     cur = conn.execute('''
         INSERT INTO trades
         (symbol, direction, conviction, entry_price, stop_loss, take_profit,
-         quantity, usd_value, order_id, status, opened_at, group_name, strategy)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?)
+         quantity, usd_value, order_id, status, opened_at, group_name, strategy,
+         entry_context, atr_at_entry, regime_at_entry, signal_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?)
     ''', (
         trade['symbol'], trade['direction'], trade['conviction'],
         trade['entry_price'], trade['stop_loss'], trade['take_profit'],
@@ -160,6 +169,10 @@ def save_trade(trade: dict) -> int:
         datetime.now().isoformat(),
         trade.get('group_name', 'A'),
         trade.get('strategy',   'TREND'),
+        json.dumps(trade['entry_context'], default=str) if trade.get('entry_context') else None,
+        trade.get('atr_at_entry'),
+        trade.get('regime_at_entry'),
+        trade.get('signal_type'),
     ))
     trade_id = cur.lastrowid
     conn.commit()
@@ -485,17 +498,21 @@ def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> d
 
         # Guardar en DB
         trade_data = {
-            'symbol':      symbol,
-            'direction':   direction,
-            'conviction':  signal['conviction'],
-            'entry_price': entry_price,
-            'stop_loss':   stop_loss,
-            'take_profit': take_profit,
-            'quantity':    float(quantity),
-            'usd_value':   usd_value,
-            'order_id':    order_id,
-            'group_name':  signal.get('group_name', 'A'),
-            'strategy':    signal.get('strategy',   'TREND'),
+            'symbol':          symbol,
+            'direction':       direction,
+            'conviction':      signal['conviction'],
+            'entry_price':     entry_price,
+            'stop_loss':       stop_loss,
+            'take_profit':     take_profit,
+            'quantity':        float(quantity),
+            'usd_value':       usd_value,
+            'order_id':        order_id,
+            'group_name':      signal.get('group_name',      'A'),
+            'strategy':        signal.get('strategy',        'TREND'),
+            'entry_context':   signal.get('entry_context'),
+            'atr_at_entry':    signal.get('atr_at_entry'),
+            'regime_at_entry': signal.get('regime_at_entry'),
+            'signal_type':     signal.get('signal_type'),
         }
         trade_id = save_trade(trade_data)
 

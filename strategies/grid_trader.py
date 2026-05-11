@@ -136,12 +136,26 @@ class GridTrader:
                 "group":             "A",
                 "group_name":        "A",
                 "strategy":          "GRID",
+                "signal_type":       "GRID_LEVEL",
+                "regime_at_entry":   None,
+                "atr_at_entry":      None,
                 "stop_loss_price":   sl_price,
                 "take_profit_price": next_level,
                 "grid_level":        level,
                 "grid_next":         next_level,
                 "take_profit":       "",   # vacío para que parse_price no lo use
                 "stop_loss":         "",
+                "entry_context": {
+                    "grid_levels":   self.levels,
+                    "range_low":     self.range_low,
+                    "range_high":    self.range_high,
+                    "step_pct":      self.grid_step_pct,
+                    "entry_level":   level,
+                    "tp_level":      next_level,
+                    "sl_basis":      self.range_low,
+                    "lookback_days": self.lookback_days,
+                    "n_levels":      self.n_levels,
+                },
             }
 
         return None
