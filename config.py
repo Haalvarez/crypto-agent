@@ -66,5 +66,5 @@ ANALYSIS_INTERVAL_MINUTES = int(os.getenv("ANALYSIS_INTERVAL_MINUTES", "240"))  
 GRID_ENABLED        = os.getenv("GRID_ENABLED", "true").lower() == "true"
 GRID_SYMBOLS        = [s.strip() for s in os.getenv("GRID_SYMBOLS", "BTC/USDT,ETH/USDT,SOL/USDT").split(",")]
 GRID_N_LEVELS       = int(os.getenv("GRID_N_LEVELS",     "8"))   # niveles totales (geométrico)
-GRID_LOOKBACK_DAYS  = int(os.getenv("GRID_LOOKBACK_DAYS", "30")) # ventana para detectar rango
+GRID_LOOKBACK_DAYS  = int(os.getenv("GRID_LOOKBACK_DAYS", "60")) # ventana para detectar rango
 GRID_STEP_PCT       = float(os.getenv("GRID_STEP_PCT", "0.025")) # 2.5% entre niveles
