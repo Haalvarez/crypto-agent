@@ -125,7 +125,9 @@ class GridTrader:
                 continue
 
             next_level = self.levels[i + 1]
-            sl_price   = round(self.range_low * 0.97, 2)   # 3% bajo el piso del rango
+            # SL = nivel anterior del grid (~1 step abajo) → R:R ≈ 1:1
+            # Antes era range_low*0.97 → daba R:R 1:0.3 (SL 6-12%, TP 2.5%)
+            sl_price   = round(level / (1 + self.grid_step_pct), 2)
 
             return {
                 "symbol":            self.symbol,
