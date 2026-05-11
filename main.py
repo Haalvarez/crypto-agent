@@ -220,7 +220,7 @@ def _upload_to_gist(content: str) -> None:
 
 
 def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
-                          signals: list[dict], balance: float) -> None:
+                          signals: list[dict], balance) -> None:
     """Escribe dashboard_state.json — leído por el dashboard PWA."""
     trade_stats = exc.get_all_trades_stats()
 
@@ -248,7 +248,8 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
         "last_analysis_times": {s: t.isoformat() for s, t in state["last_analysis"].items()},
         "halted":           state["halted"],
         "fear_greed":       fng,
-        "balance_usdt":     balance,
+        "balance_usdt":     balance.get('free_usdt') if isinstance(balance, dict) else balance,
+        "balance":          balance if isinstance(balance, dict) else {'free_usdt': balance, 'locked_value': 0, 'total': balance, 'open_count': 0},
         "pair_stats":       state["pair_stats"],
         "open_trades":      trade_stats["open_trades"],
         "trade_summary": {
@@ -445,6 +446,9 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == '/api/equity_curve':
             self._handle_equity_curve()
             return
+        if path == '/api/trades':
+            self._handle_trades()
+            return
 
         fpath = os.path.join(WEBROOT, path.lstrip('/'))
         if os.path.isfile(fpath):
@@ -462,6 +466,46 @@ class APIHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def _handle_trades(self):
+        """
+        Lista de trades para análisis. Query: ?strategy=GRID&status=WIN&limit=50
+        """
+        import sqlite3
+        params = dict(p.split('=') for p in self.path.split('?')[1].split('&') if '=' in p) \
+                 if '?' in self.path else {}
+        strategy = params.get('strategy')
+        status   = params.get('status')
+        limit    = min(int(params.get('limit', '100')), 500)
+
+        where, args = [], []
+        if strategy:
+            where.append("COALESCE(strategy,'TREND') = ?"); args.append(strategy)
+        if status:
+            where.append("status = ?"); args.append(status)
+        clause = ("WHERE " + " AND ".join(where)) if where else ""
+
+        try:
+            conn = sqlite3.connect(exc.DB_PATH)
+            rows = conn.execute(
+                f"""SELECT id, symbol, direction, COALESCE(strategy,'TREND'), conviction,
+                           entry_price, stop_loss, take_profit, exit_price, pnl_usd,
+                           status, opened_at, closed_at, usd_value, quantity
+                    FROM trades {clause}
+                    ORDER BY id DESC LIMIT ?""",
+                args + [limit]
+            ).fetchall()
+            conn.close()
+            trades = [{
+                'id': r[0], 'symbol': r[1], 'direction': r[2], 'strategy': r[3],
+                'conviction': r[4], 'entry_price': r[5], 'stop_loss': r[6],
+                'take_profit': r[7], 'exit_price': r[8], 'pnl_usd': r[9],
+                'status': r[10], 'opened_at': r[11], 'closed_at': r[12],
+                'usd_value': r[13], 'quantity': r[14],
+            } for r in rows]
+            self._json(200, {'count': len(trades), 'trades': trades})
+        except Exception as e:
+            self._json(500, {'error': str(e)})
 
     def _handle_equity_curve(self):
         """
@@ -843,8 +887,8 @@ def run_cycle():
     _update_pair_stats(signals, mkt, regimes)
 
     # 9. Dashboard state
-    balance = exc.get_balance_usdt()
-    write_dashboard_state(mkt, fng, regimes, signals, balance)
+    bal = exc.get_balance_breakdown(mkt)
+    write_dashboard_state(mkt, fng, regimes, signals, bal)
 
     state["cycles_run"] += 1
     log.info(f"── Ciclo #{cycle_num} completado ──\n")

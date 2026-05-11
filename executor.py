@@ -519,14 +519,52 @@ def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> d
 
 
 def get_balance_usdt() -> float:
-    """Retorna el balance de USDT disponible."""
+    """Retorna el balance de USDT disponible (back-compat)."""
+    return get_balance_breakdown().get('free_usdt', 0.0)
+
+
+def get_balance_breakdown(market_data: dict = None) -> dict:
+    """
+    Retorna el desglose completo del balance:
+      free_usdt:      USDT cash disponible
+      locked_value:   Valor actual (USDT equivalente) de todas las posiciones OPEN
+      total:          free_usdt + locked_value
+      open_count:     cantidad de posiciones abiertas
+    """
+    free_usdt    = 0.0
+    locked_value = 0.0
+    open_rows    = []
+
     try:
         exchange = get_exchange()
         balance  = exchange.fetch_balance()
-        return float(balance['free'].get('USDT', 0))
+        free_usdt = float(balance['free'].get('USDT', 0))
     except Exception as e:
         print(f"  [executor] ERROR obteniendo balance: {e}")
-        return 0.0
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        open_rows = conn.execute(
+            "SELECT symbol, quantity, entry_price, direction FROM trades WHERE status='OPEN'"
+        ).fetchall()
+        conn.close()
+        for sym, qty, entry, direction in open_rows:
+            current = entry  # fallback al entry si no hay market_data
+            if market_data and sym in market_data:
+                current = market_data[sym].get('price') or entry
+            if direction == 'LONG':
+                locked_value += float(qty) * float(current)
+            else:
+                locked_value += float(qty) * float(entry)  # SHORT: margen comprometido
+    except Exception as e:
+        print(f"  [executor] ERROR breakdown posiciones: {e}")
+
+    return {
+        'free_usdt':    round(free_usdt,    2),
+        'locked_value': round(locked_value, 2),
+        'total':        round(free_usdt + locked_value, 2),
+        'open_count':   len(open_rows),
+    }
 
 
 def close_trade(trade_id: int, exit_price: float, result: str) -> None:

@@ -397,7 +397,23 @@
     </div>
     <div class="ci-card">
       <div class="ci-val" id="ci-balance" style="color:var(--green)">—</div>
-      <div class="ci-lbl">Balance USDT</div>
+      <div class="ci-lbl" onclick="showTip('Balance Total','Suma de USDT libre + valor actual de las posiciones abiertas (convertido a USDT). Tocá la tarjeta de Balance para ver el desglose.')">Balance Total ⓘ</div>
+    </div>
+  </div>
+
+  <!-- Desglose de balance -->
+  <div class="trade-summary" id="balance-breakdown" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 14px">
+    <div>
+      <div class="ts-val" id="bal-free" style="color: var(--green)">—</div>
+      <div class="ts-lbl" onclick="showTip('USDT Libre','Cash disponible en la cuenta de Binance. Esto es lo que el agente puede usar para abrir nuevas posiciones.')">USDT Libre ⓘ</div>
+    </div>
+    <div>
+      <div class="ts-val" id="bal-locked" style="color: var(--amber)">—</div>
+      <div class="ts-lbl" onclick="showTip('En Posiciones','Valor actual (a precio de mercado) de todas las monedas que el agente compró y aún no vendió. Suma de las posiciones abiertas convertidas a USDT.')">En Posiciones ⓘ</div>
+    </div>
+    <div>
+      <div class="ts-val" id="bal-total" style="color: var(--blue)">—</div>
+      <div class="ts-lbl">Total general</div>
     </div>
   </div>
 
@@ -896,7 +912,11 @@ async function loadState() {
     // Cycle info
     document.getElementById('ci-monitor').textContent = d.cycle        || '—';
     document.getElementById('ci-claude').textContent  = d.analysis_cycles ?? '—';
-    document.getElementById('ci-balance').textContent = '$' + (d.balance_usdt||0).toFixed(2);
+    const bal = d.balance || {free_usdt: d.balance_usdt || 0, locked_value: 0, total: d.balance_usdt || 0};
+    document.getElementById('ci-balance').textContent = '$' + (bal.total||0).toFixed(2);
+    document.getElementById('bal-free').textContent   = '$' + (bal.free_usdt||0).toFixed(2);
+    document.getElementById('bal-locked').textContent = '$' + (bal.locked_value||0).toFixed(2);
+    document.getElementById('bal-total').textContent  = '$' + (bal.total||0).toFixed(2);
 
     document.getElementById('halted-banner').style.display = d.halted ? 'block' : 'none';
 
