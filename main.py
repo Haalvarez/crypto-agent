@@ -890,19 +890,21 @@ def run_cycle():
     fng_value = fng.get("value", 50)
     for signal in signals:
         if signal.get("actionable") and not state["halted"]:
-            # Filtro Fear & Greed: no abrir LONG en Extreme Greed ni SHORT en Extreme Fear
-            if signal["direction"] == "LONG" and fng_value > 80:
-                log.info(f"  Skip {signal['symbol']} LONG — F&G {fng_value} (Extreme Greed)")
-                exc.log_event("ENTRY_CHECK", f"{signal['symbol']} bloqueado — F&G {fng_value} Extreme Greed",
-                              symbol=signal["symbol"], level="WARNING",
-                              details={"fng": fng_value, "direction": "LONG"})
-                continue
-            if signal["direction"] == "SHORT" and fng_value < 20:
-                log.info(f"  Skip {signal['symbol']} SHORT — F&G {fng_value} (Extreme Fear)")
-                exc.log_event("ENTRY_CHECK", f"{signal['symbol']} bloqueado — F&G {fng_value} Extreme Fear",
-                              symbol=signal["symbol"], level="WARNING",
-                              details={"fng": fng_value, "direction": "SHORT"})
-                continue
+            # Filtro Fear & Greed — excluye Grid: es mean-reversion, no direccional
+            is_grid = signal.get("strategy") == "GRID"
+            if not is_grid:
+                if signal["direction"] == "LONG" and fng_value > 80:
+                    log.info(f"  Skip {signal['symbol']} LONG — F&G {fng_value} (Extreme Greed)")
+                    exc.log_event("ENTRY_CHECK", f"{signal['symbol']} bloqueado — F&G {fng_value} Extreme Greed",
+                                  symbol=signal["symbol"], level="WARNING",
+                                  details={"fng": fng_value, "direction": "LONG"})
+                    continue
+                if signal["direction"] == "SHORT" and fng_value < 20:
+                    log.info(f"  Skip {signal['symbol']} SHORT — F&G {fng_value} (Extreme Fear)")
+                    exc.log_event("ENTRY_CHECK", f"{signal['symbol']} bloqueado — F&G {fng_value} Extreme Fear",
+                                  symbol=signal["symbol"], level="WARNING",
+                                  details={"fng": fng_value, "direction": "SHORT"})
+                    continue
             is_b     = signal.get("group") == "B"
             stop_pct = config.STOP_LOSS_PCT_B   if is_b else config.STOP_LOSS_PCT
             log.info(f"Ejecutando: {signal['symbol']} {signal['direction']} (Grupo {'B' if is_b else 'A'})")

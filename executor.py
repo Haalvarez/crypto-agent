@@ -448,8 +448,8 @@ def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> d
         print(f"  [executor] Ya hay posición abierta en {symbol} — saltando")
         return None
 
-    # Verificar correlación — no abrir misma dirección en pares correlacionados
-    if _has_correlated_position(symbol, direction):
+    # Verificar correlación — solo para TREND/MOMENTUM, no Grid (mean-reversion independiente)
+    if signal.get('strategy') != 'GRID' and _has_correlated_position(symbol, direction):
         print(f"  [executor] Posición correlacionada ya abierta ({symbol} {direction}) — saltando")
         return None
 
