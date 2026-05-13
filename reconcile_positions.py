@@ -185,18 +185,26 @@ def print_report(diag: dict) -> None:
     print("\n" + "=" * 70)
 
 
-def execute_orphan_closes(orphans: list[dict], confirm: bool = False) -> None:
-    """Vende los huérfanos en Binance y actualiza DB con exit_price real."""
+def execute_orphan_closes(orphans: list[dict], confirm: bool = False,
+                           verbose: bool = True) -> list[dict]:
+    """
+    Vende los huérfanos en Binance y actualiza DB con exit_price real.
+    Retorna lista de resultados estructurados (uno por huérfano procesado).
+    """
+    results = []
     if not orphans:
-        print("\nNo hay huérfanos Binance para cerrar.")
-        return
+        if verbose:
+            print("\nNo hay huérfanos Binance para cerrar.")
+        return results
 
-    print(f"\n⚠️  Se van a cerrar {len(orphans)} posiciones huérfanas en Binance Testnet.")
+    if verbose:
+        print(f"\n⚠️  Se van a cerrar {len(orphans)} posiciones huérfanas en Binance Testnet.")
     if not confirm:
         resp = input("Continuar? (yes/no): ").strip().lower()
         if resp not in ('yes', 'y', 'si', 's'):
-            print("Cancelado.")
-            return
+            if verbose:
+                print("Cancelado.")
+            return results
 
     exchange = exc.get_exchange()
     exchange.load_markets()
@@ -204,7 +212,8 @@ def execute_orphan_closes(orphans: list[dict], confirm: bool = False) -> None:
     for t in orphans:
         try:
             qty = exchange.amount_to_precision(t['symbol'], t['quantity'])
-            print(f"\n→ Vendiendo #{t['id']} {t['symbol']} qty={qty}...")
+            if verbose:
+                print(f"\n→ Vendiendo #{t['id']} {t['symbol']} qty={qty}...")
             order = exchange.create_order(
                 symbol=t['symbol'], type='market', side='sell', amount=float(qty)
             )
@@ -233,11 +242,35 @@ def execute_orphan_closes(orphans: list[dict], confirm: bool = False) -> None:
                                    'old_pnl': t['pnl_usd'], 'new_pnl': round(real_pnl, 4),
                                    'real_exit': real_exit, 'old_exit': t['exit_price']})
 
-            print(f"  ✅ {real_status} | exit real ${real_exit:.4f} | "
-                  f"PnL real ${real_pnl:+.2f} (DB tenía ${t['pnl_usd']:+.2f})")
+            if verbose:
+                print(f"  ✅ {real_status} | exit real ${real_exit:.4f} | "
+                      f"PnL real ${real_pnl:+.2f} (DB tenía ${t['pnl_usd']:+.2f})")
+
+            results.append({
+                'trade_id':       t['id'],
+                'symbol':         t['symbol'],
+                'ok':             True,
+                'old_status':     t['status'],
+                'new_status':     real_status,
+                'old_exit':       t['exit_price'],
+                'real_exit':      real_exit,
+                'old_pnl':        t['pnl_usd'],
+                'real_pnl':       round(real_pnl, 4),
+                'qty':            t['quantity'],
+            })
 
         except Exception as e:
-            print(f"  ❌ Error vendiendo #{t['id']} {t['symbol']}: {e}")
+            if verbose:
+                print(f"  ❌ Error vendiendo #{t['id']} {t['symbol']}: {e}")
+            results.append({
+                'trade_id': t['id'],
+                'symbol':   t['symbol'],
+                'ok':       False,
+                'error':    str(e),
+                'qty':      t['quantity'],
+            })
+
+    return results
 
 
 def main():

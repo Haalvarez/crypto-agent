@@ -501,6 +501,9 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == '/api/trades':
             self._handle_trades()
             return
+        if path == '/api/reconcile':
+            self._handle_reconcile()
+            return
 
         fpath = os.path.join(WEBROOT, path.lstrip('/'))
         if os.path.isfile(fpath):
@@ -518,6 +521,53 @@ class APIHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def _handle_reconcile(self):
+        """
+        Diagnóstico y cierre de posiciones huérfanas (Binance ↔ trades.db).
+        Query: ?execute=1 → vende los huérfanos. Sin execute → solo dry-run.
+        """
+        params = dict(p.split('=') for p in self.path.split('?')[1].split('&') if '=' in p) \
+                 if '?' in self.path else {}
+        execute_flag = params.get('execute') in ('1', 'true', 'yes')
+
+        try:
+            from reconcile_positions import diagnose, execute_orphan_closes
+            diag = diagnose()
+            payload = {
+                'mode':              'execute' if execute_flag else 'dry-run',
+                'binance_balances':  diag['binance_balances'],
+                'expected_qty':      diag['expected_qty'],
+                'orphans_binance':   diag['orphans_binance'],
+                'orphans_db':        diag['orphans_db'],
+                'extra_binance':     diag['extra_binance'],
+                'summary': {
+                    'orphans_binance_count': len(diag['orphans_binance']),
+                    'orphans_db_count':      len(diag['orphans_db']),
+                    'extra_binance_count':   len(diag['extra_binance']),
+                },
+            }
+
+            if execute_flag and diag['orphans_binance']:
+                results = execute_orphan_closes(diag['orphans_binance'],
+                                                 confirm=True, verbose=False)
+                payload['executed'] = results
+                payload['executed_count'] = sum(1 for r in results if r.get('ok'))
+                payload['executed_failed'] = sum(1 for r in results if not r.get('ok'))
+                exc.log_event("RECONCILE_RUN",
+                              f"Reconcile vía API — {payload['executed_count']} cerrados, {payload['executed_failed']} fallaron",
+                              level="WARNING",
+                              details={'count_ok': payload['executed_count'],
+                                       'count_fail': payload['executed_failed']})
+            elif execute_flag:
+                payload['executed'] = []
+                payload['executed_count'] = 0
+                payload['note'] = 'Sin huérfanos para cerrar.'
+
+            self._json(200, payload)
+        except Exception as e:
+            log.error(f"[reconcile] {e}")
+            self._json(500, {'error': str(e)})
 
     def _handle_trades(self):
         """
