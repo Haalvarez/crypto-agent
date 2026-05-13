@@ -417,6 +417,23 @@
     </div>
   </div>
 
+  <!-- Capital desplegado vs ocioso -->
+  <div class="trade-summary" id="capital-widget" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 14px">
+    <div>
+      <div class="ts-val" id="cap-needed" style="color: var(--blue)">—</div>
+      <div class="ts-lbl" onclick="showTip('Capital mínimo necesario','MAX_TRADE_USD × MAX_OPEN_POSITIONS. Es el capital que el agente necesita disponible para operar a su capacidad completa (todas las cuotas llenas).')">Capital mínimo ⓘ</div>
+    </div>
+    <div>
+      <div class="ts-val" id="cap-idle" style="color: var(--muted)">—</div>
+      <div class="ts-lbl" onclick="showTip('Capital ocioso','USDT libre por encima de un trade. Si es muy alto, hay capital sin trabajar. Si es 0 o negativo, no se pueden abrir nuevas posiciones.')">Capital ocioso ⓘ</div>
+    </div>
+    <div>
+      <div class="ts-val" id="cap-status">—</div>
+      <div class="ts-lbl">Listo para operar</div>
+    </div>
+  </div>
+  <div id="cap-warning" style="display:none; background: rgba(239,68,68,.1); border:1px solid var(--red); border-radius:8px; padding:8px 12px; margin-bottom:14px; font-size:.8rem; color: var(--red)"></div>
+
   <!-- Fear & Greed -->
   <div class="fng-bar-wrap">
     <div class="fng-header">
@@ -917,6 +934,26 @@ async function loadState() {
     document.getElementById('bal-free').textContent   = '$' + (bal.free_usdt||0).toFixed(2);
     document.getElementById('bal-locked').textContent = '$' + (bal.locked_value||0).toFixed(2);
     document.getElementById('bal-total').textContent  = '$' + (bal.total||0).toFixed(2);
+
+    // Capital widget
+    const cb = d.capital_breakdown;
+    if (cb) {
+      document.getElementById('cap-needed').textContent = '$' + cb.min_needed.toFixed(0)
+        + ' (' + cb.max_open + ' × $' + cb.max_trade_usd.toFixed(0) + ')';
+      const idleEl = document.getElementById('cap-idle');
+      idleEl.textContent = '$' + cb.idle_usdt.toFixed(2);
+      idleEl.style.color = cb.idle_usdt > cb.max_trade_usd * 2 ? 'var(--amber)' : 'var(--muted)';
+      const statusEl = document.getElementById('cap-status');
+      statusEl.textContent = cb.can_open_trade ? '✅ Sí' : '❌ No';
+      statusEl.style.color = cb.can_open_trade ? 'var(--green)' : 'var(--red)';
+      const warnEl = document.getElementById('cap-warning');
+      if (cb.warning) {
+        warnEl.style.display = 'block';
+        warnEl.textContent = '⚠ ' + cb.warning;
+      } else {
+        warnEl.style.display = 'none';
+      }
+    }
 
     document.getElementById('halted-banner').style.display = d.halted ? 'block' : 'none';
 

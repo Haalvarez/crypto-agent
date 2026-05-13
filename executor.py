@@ -459,6 +459,25 @@ def execute_signal(signal: dict, market_data: dict, stop_pct: float = None) -> d
         print(f"  [executor] Sin precio para {symbol} — abortando")
         return None
 
+    # Validación pre-trade: hay USDT libre suficiente para esta operación?
+    # Si no, alerta por Telegram y aborta — evita errores ruidosos en Binance.
+    free_usdt = get_balance_usdt()
+    if free_usdt < MAX_TRADE_USD:
+        msg = (f"Saldo insuficiente: free=${free_usdt:.2f} < MAX_TRADE_USD=${MAX_TRADE_USD:.2f} "
+               f"— skipping {symbol} {direction}")
+        print(f"  [executor] {msg}")
+        log_event("LOW_BALANCE", msg, symbol=symbol, level="ERROR",
+                  details={"free_usdt": free_usdt, "needed": MAX_TRADE_USD,
+                           "symbol": symbol, "strategy": signal.get('strategy')})
+        try:
+            import telegram_alerts as _tg
+            _tg.send_error("Saldo bajo",
+                           f"${free_usdt:.2f} libres, se necesitan ${MAX_TRADE_USD:.2f} "
+                           f"para operar {symbol}. Reconciliar posiciones huérfanas o transferir USDT.")
+        except Exception:
+            pass
+        return None
+
     # Calcular cantidad a comprar (máximo MAX_TRADE_USD)
     quantity_raw = MAX_TRADE_USD / current_price
 
@@ -610,6 +629,11 @@ def check_open_positions(market_data: dict) -> list[dict]:
     Revisa todas las posiciones OPEN contra el precio actual.
     Cierra las que tocaron stop-loss o take-profit.
 
+    Cuando se toca SL/TP:
+      1. Coloca orden market en Binance para liberar el balance
+      2. Recalcula PnL con el fill real (puede diferir del SL/TP teórico por slippage)
+      3. Actualiza DB con exit_price y pnl reales
+
     SL fijo y TP fijo siempre activos.
     El trailing stop (main_async) es una capa adicional — no deshabilita el TP.
     """
@@ -620,30 +644,65 @@ def check_open_positions(market_data: dict) -> list[dict]:
     ).fetchall()
     conn.close()
 
-    closed = []
+    closed   = []
+    exchange = None   # lazy init — solo si hay algo que cerrar
+
     for trade in trades:
         trade_id, symbol, direction, entry, stop, target, qty = trade
         price = market_data.get(symbol, {}).get('price', 0)
         if not price:
             continue
 
-        result     = None
-        exit_price = None
+        result        = None
+        target_price  = None  # SL o TP teórico que disparó
 
         if direction == 'LONG':
             if price <= stop:
-                result, exit_price = 'LOSS', stop
+                result, target_price = 'LOSS', stop
             elif price >= target:
-                result, exit_price = 'WIN', target
+                result, target_price = 'WIN', target
         else:  # SHORT
             if price >= stop:
-                result, exit_price = 'LOSS', stop
+                result, target_price = 'LOSS', stop
             elif price <= target:
-                result, exit_price = 'WIN', target
+                result, target_price = 'WIN', target
 
         if result:
+            # Colocar la orden REAL en Binance — antes solo se actualizaba la DB
+            # y la posición quedaba huérfana en el exchange.
+            exit_price = target_price   # fallback si la orden falla
+            try:
+                if exchange is None:
+                    exchange = get_exchange()
+                    exchange.load_markets()
+                qty_prec = exchange.amount_to_precision(symbol, qty)
+                side     = 'sell' if direction == 'LONG' else 'buy'
+                order    = exchange.create_order(
+                    symbol=symbol, type='market', side=side, amount=float(qty_prec)
+                )
+                exit_price = float(order.get('average') or order.get('price') or target_price)
+                print(f"  [executor] Trade #{trade_id} cerrado en Binance — fill ${exit_price:.4f} (SL/TP teórico ${target_price:.4f})")
+            except Exception as e:
+                print(f"  [executor] ERROR cerrando #{trade_id} {symbol} en Binance: {e}")
+                print(f"  [executor] Marcando DB con exit teórico ${target_price:.4f} — reconciliar luego")
+                log_event("CLOSE_ORDER_FAIL",
+                          f"#{trade_id} {symbol} no se pudo cerrar en Binance",
+                          symbol=symbol, level="ERROR",
+                          details={"error": str(e), "target_price": target_price,
+                                   "result_planned": result, "qty": qty})
+
             close_trade(trade_id, exit_price, result)
             pnl = (exit_price - entry) * qty if direction == 'LONG' else (entry - exit_price) * qty
+            # Re-evaluar WIN/LOSS con el exit real (slippage puede invertir el resultado)
+            real_result = 'WIN' if pnl >= 0 else 'LOSS'
+            if real_result != result:
+                # Corregir status si el slippage invirtió el resultado
+                conn2 = sqlite3.connect(DB_PATH)
+                conn2.execute("UPDATE trades SET status=? WHERE id=?", (real_result, trade_id))
+                conn2.commit()
+                conn2.close()
+                result = real_result
+
             closed.append({
                 'trade_id':    trade_id,
                 'symbol':      symbol,

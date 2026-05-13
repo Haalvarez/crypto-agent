@@ -239,6 +239,26 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
             t["pnl_pct"] = 0
             t["pnl_usd"] = 0
 
+    # Capital desplegado real vs ocioso
+    free_usdt    = balance.get('free_usdt', 0)    if isinstance(balance, dict) else balance
+    locked_value = balance.get('locked_value', 0) if isinstance(balance, dict) else 0
+    total_equity = free_usdt + locked_value
+    capital_min_needed = float(config.MAX_TRADE_USD) * int(config.MAX_OPEN_POSITIONS)
+    idle_usdt = max(0.0, free_usdt - config.MAX_TRADE_USD)   # USDT libre que excede 1 trade
+    can_open_trade = free_usdt >= config.MAX_TRADE_USD
+    capital_breakdown = {
+        "min_needed":      round(capital_min_needed, 2),    # MAX_TRADE × MAX_POS
+        "max_trade_usd":   float(config.MAX_TRADE_USD),
+        "max_open":        int(config.MAX_OPEN_POSITIONS),
+        "free_usdt":       round(free_usdt,    2),
+        "locked_value":    round(locked_value, 2),
+        "total_equity":    round(total_equity, 2),
+        "idle_usdt":       round(idle_usdt,    2),          # USDT libre por encima de 1 trade
+        "can_open_trade":  can_open_trade,
+        "warning":         (None if can_open_trade
+                            else f"Saldo libre ${free_usdt:.2f} < MAX_TRADE_USD ${config.MAX_TRADE_USD:.2f}"),
+    }
+
     payload = {
         "last_update":        datetime.now().isoformat(),
         "cycle":              state["cycles_run"],
@@ -248,8 +268,9 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
         "last_analysis_times": {s: t.isoformat() for s, t in state["last_analysis"].items()},
         "halted":           state["halted"],
         "fear_greed":       fng,
-        "balance_usdt":     balance.get('free_usdt') if isinstance(balance, dict) else balance,
+        "balance_usdt":     free_usdt,
         "balance":          balance if isinstance(balance, dict) else {'free_usdt': balance, 'locked_value': 0, 'total': balance, 'open_count': 0},
+        "capital_breakdown": capital_breakdown,
         "pair_stats":       state["pair_stats"],
         "open_trades":      trade_stats["open_trades"],
         "trade_summary": {
@@ -282,16 +303,39 @@ def write_dashboard_state(mkt: dict, fng: dict, regimes: dict,
 
 # ── Equity curve por estrategia ──────────────────────────────
 
-def build_equity_curve(since_str: str, capital: float) -> dict:
+def build_equity_curve(since_str: str = "auto", capital: float = 0) -> dict:
     """
     Construye la curva de equity diaria para cada estrategia + Buy&Hold BTC.
 
+    Args:
+        since_str: ISO date o "auto" para arrancar desde el primer trade registrado
+        capital:   USD de capital base. Si <=0, se autocalcula como
+                   MAX_TRADE_USD * MAX_OPEN_POSITIONS (capital desplegado real)
+
     Para cada estrategia: equity[día N] = capital + Σ pnl_realizado_hasta_N + pnl_no_realizado_actual_si_es_ultimo_dia.
-    Para BTC Hold: capital convertido a BTC el día `since_str` y valuado al precio diario.
+    Para BTC Hold: el MISMO capital (deployed) convertido a BTC el día de inicio
+                   y valuado al precio diario — comparación apples-to-apples.
     """
     import sqlite3
     from datetime import datetime, timedelta, date as dtdate
     import requests as _req
+
+    # ── Auto-defaults ─────────────────────────────────────────
+    deployed_capital = float(config.MAX_TRADE_USD) * int(config.MAX_OPEN_POSITIONS)
+    if capital <= 0:
+        capital = deployed_capital
+
+    if since_str == "auto" or not since_str:
+        # Buscar el primer trade registrado (cualquier estrategia)
+        conn0 = sqlite3.connect(exc.DB_PATH)
+        first = conn0.execute(
+            "SELECT MIN(opened_at) FROM trades"
+        ).fetchone()
+        conn0.close()
+        if first and first[0]:
+            since_str = first[0][:10]   # YYYY-MM-DD
+        else:
+            since_str = datetime.now().strftime("%Y-%m-%d")
 
     since = datetime.fromisoformat(since_str)
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -354,6 +398,14 @@ def build_equity_curve(since_str: str, capital: float) -> dict:
         'capital':    capital,
         'days':       [dt.date().isoformat() for dt in days],
         'strategies': {},
+        'meta': {
+            'deployed_capital':   deployed_capital,
+            'max_trade_usd':      float(config.MAX_TRADE_USD),
+            'max_open_positions': int(config.MAX_OPEN_POSITIONS),
+            'auto_since':         since_str,
+            'note': (f"Capital de comparación = MAX_TRADE_USD × MAX_OPEN_POSITIONS = "
+                     f"${config.MAX_TRADE_USD:.0f} × {config.MAX_OPEN_POSITIONS} = ${deployed_capital:.0f}"),
+        },
     }
 
     for strat in strategies:
@@ -510,13 +562,16 @@ class APIHandler(BaseHTTPRequestHandler):
     def _handle_equity_curve(self):
         """
         Curva de equity diaria por estrategia desde una fecha.
-        Query params: ?since=2026-05-01&capital=1000
+        Query params: ?since=auto&capital=auto (defaults)
+                      since=auto → primer trade en DB
+                      capital=auto → MAX_TRADE_USD × MAX_OPEN_POSITIONS
         """
         params = dict(p.split('=') for p in self.path.split('?')[1].split('&') if '=' in p) \
                  if '?' in self.path else {}
-        since_str = params.get('since', '2026-05-01')
-        capital   = float(params.get('capital', '1000'))
+        since_str = params.get('since', 'auto')
+        capital_raw = params.get('capital', 'auto')
         try:
+            capital = 0 if capital_raw == 'auto' else float(capital_raw)
             data = build_equity_curve(since_str, capital)
             self._json(200, data)
         except Exception as e:

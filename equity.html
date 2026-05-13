@@ -113,12 +113,12 @@
 
   <div class="controls">
     <div class="ctl">
-      <label for="since">Fecha de inicio</label>
-      <input id="since" type="date" value="2026-05-01">
+      <label for="since">Fecha de inicio (vacío = primer trade)</label>
+      <input id="since" type="date">
     </div>
     <div class="ctl">
-      <label for="capital">Capital inicial (USD)</label>
-      <input id="capital" type="number" min="100" step="100" value="1000">
+      <label for="capital">Capital (vacío = capital desplegado real)</label>
+      <input id="capital" type="number" min="0" step="100" placeholder="auto">
     </div>
     <div class="ctl ctl-toggle">
       <input id="proj" type="checkbox">
@@ -144,9 +144,8 @@
 
   <div class="disclaimer" id="disclaimer">
     <strong>⚠ Sesgos a tener en cuenta:</strong>
-    Las curvas usan capital virtual de $1,000 por estrategia (fair compare), pero los trades reales fueron con $50 por operación (sin compounding).
+    <span id="capital-note">Cargando…</span>
     El último punto de cada estrategia incluye PnL no realizado de posiciones abiertas — puede oscilar hasta que cierren.
-    BTC Hold parte del precio de apertura del 1/5/26.
     <strong>La proyección lineal NO es predicción</strong>: extrapola los últimos 7 días y solo sirve para ver si la pendiente actual es positiva o negativa.
   </div>
 
@@ -171,8 +170,8 @@ const REFRESH_MS = 60000;
 const $ = id => document.getElementById(id);
 
 async function load() {
-  const since   = $('since').value;
-  const capital = $('capital').value;
+  const since   = $('since').value   || 'auto';
+  const capital = $('capital').value || 'auto';
   const url = `/api/equity_curve?since=${since}&capital=${capital}`;
 
   let data;
@@ -186,6 +185,14 @@ async function load() {
   renderLegend(data);
   renderLineChart(data);
   renderBarChart(data);
+  renderMeta(data);
+}
+
+function renderMeta(data) {
+  const note = $('capital-note');
+  if (data.meta && data.meta.note) {
+    note.innerHTML = `${data.meta.note}. Curva arranca el ${data.meta.auto_since}. Buy &amp; Hold BTC se compara con el mismo capital.`;
+  }
 }
 
 function renderLegend(data) {
